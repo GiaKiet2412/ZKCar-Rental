@@ -1,0 +1,23 @@
+# Backend env
+service-booking-backend/.env
+
+# Frontend env
+service-booking-frontend/.env
+service-booking-frontend/.env.local
+
+# Node modules for both
+service-booking-frontend/node_modules/
+service-booking-backend/node_modules/
+
+# Build folders
+service-booking-frontend/dist/
+service-booking-frontend/build/
+service-booking-backend/dist/
+service-booking-backend/build/
+
+# Uploads
+service-booking-backend/uploads/
+
+# System files
+.DS_Store
+Thumbs.db
