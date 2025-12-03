@@ -1,5 +1,6 @@
 import Vehicle from '../models/Vehicle.js';
 import Brand from "../models/Brand.js";
+import Booking from '../models/Booking.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -126,5 +127,115 @@ export const deleteVehicle = async (req, res) => {
     res.json({ message: 'Đã xóa xe thành công' });
   } catch (err) {
     res.status(500).json({ message: 'Không thể xóa xe', error: err.message });
+  }
+};
+
+//Lấy các khung giờ xe đã được đặt
+export const getBookedSlots = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+
+    // Tìm tất cả booking của xe trong khoảng thời gian
+    const query = {
+      vehicle: id,
+      status: { $in: ['pending', 'confirmed', 'ongoing'] }, // Chỉ lấy booking còn hiệu lực
+      paymentStatus: 'paid' // Chỉ lấy booking đã thanh toán
+    };
+
+    if (startDate) {
+      query.returnDate = { $gte: new Date(startDate) };
+    }
+    if (endDate) {
+      query.pickupDate = { $lte: new Date(endDate) };
+    }
+
+    const bookings = await Booking.find(query)
+      .select('pickupDate returnDate status')
+      .sort({ pickupDate: 1 });
+
+    // Format kết quả
+    const bookedSlots = bookings.map(booking => ({
+      start: booking.pickupDate,
+      end: booking.returnDate,
+      status: booking.status
+    }));
+
+    res.json({
+      success: true,
+      bookedSlots
+    });
+  } catch (err) {
+    console.error('Error getting booked slots:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy thông tin lịch đặt xe'
+    });
+  }
+};
+
+//Kiểm tra xe có available trong khoảng thời gian không
+export const checkAvailability = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { pickupDate, returnDate } = req.body;
+
+    if (!pickupDate || !returnDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp thời gian nhận và trả xe'
+      });
+    }
+
+    const pickup = new Date(pickupDate);
+    const returnD = new Date(returnDate);
+
+    // Kiểm tra có booking nào trùng không
+    const conflictingBooking = await Booking.findOne({
+      vehicle: id,
+      status: { $in: ['pending', 'confirmed', 'ongoing'] },
+      paymentStatus: 'paid',
+      $or: [
+        // Trường hợp 1: Pickup mới nằm trong booking cũ
+        {
+          pickupDate: { $lte: pickup },
+          returnDate: { $gte: pickup }
+        },
+        // Trường hợp 2: Return mới nằm trong booking cũ
+        {
+          pickupDate: { $lte: returnD },
+          returnDate: { $gte: returnD }
+        },
+        // Trường hợp 3: Booking mới bao trùm booking cũ
+        {
+          pickupDate: { $gte: pickup },
+          returnDate: { $lte: returnD }
+        }
+      ]
+    });
+
+    if (conflictingBooking) {
+      return res.json({
+        success: false,
+        available: false,
+        message: 'Xe đã được đặt trong khung giờ này',
+        conflictingBooking: {
+          pickupDate: conflictingBooking.pickupDate,
+          returnDate: conflictingBooking.returnDate
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      available: true,
+      message: 'Xe có thể đặt trong khung giờ này'
+    });
+  } catch (err) {
+    console.error('Error checking availability:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi kiểm tra tình trạng xe'
+    });
   }
 };

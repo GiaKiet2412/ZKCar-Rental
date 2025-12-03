@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
-import { createVehicle, getVehicles, getVehicleById, updateVehicle, deleteVehicle,} from '../controllers/vehicleController.js';
+import { createVehicle, getVehicles, getVehicleById, updateVehicle, deleteVehicle, getBookedSlots, checkAvailability,} from '../controllers/vehicleController.js';
 import { protect, checkRole } from '../middleware/authMiddleware.js';
 import Vehicle from '../models/Vehicle.js';
 import Brand from "../models/Brand.js";
@@ -99,5 +99,7 @@ router.get("/brands", async (req, res) => {
 // Public: Xem danh sách & chi tiết
 router.get('/', getVehicles);
 router.get('/:id', getVehicleById);
+router.get('/:id/booked-slots', getBookedSlots);
+router.post('/:id/check-availability', checkAvailability);
 
 export default router;

@@ -66,24 +66,76 @@ const PricingCard = ({
 
       {/* Thời gian thuê */}
       <div
-        className={`p-3 rounded-lg border transition-colors ${
-          timeBoxColor === "gray" ? "border-gray-300 bg-gray-50" :
-          timeBoxColor === "yellow" ? "border-yellow-400 bg-yellow-50" :
-          "border-red-400 bg-red-50"
-        }`}>
-        <p className="text-sm font-medium text-gray-800">Thời gian thuê</p>
-        <p
-          className="font-semibold text-gray-800 cursor-pointer hover:text-green-700 mt-1"
-          onClick={onTimeClick}>
-          {rangeDisplay || "Chưa chọn thời gian"}
-        </p>
-        <p className="text-sm text-gray-500">Tổng: {totalHours} giờ</p>
+        onClick={onTimeClick}
+        className={`p-4 rounded-lg border-2 transition-all cursor-pointer group ${
+          timeBoxColor === "gray" 
+            ? "border-gray-300 bg-gray-50 hover:border-green-400 hover:bg-green-50" 
+            : timeBoxColor === "yellow" 
+            ? "border-yellow-400 bg-yellow-50 hover:border-yellow-500 hover:bg-yellow-100" 
+            : "border-red-400 bg-red-50 hover:border-red-500 hover:bg-red-100"
+        }`}
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-gray-600 mb-1 flex items-center gap-2">
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className="h-4 w-4" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Thời gian thuê xe
+            </p>
+            
+            <p className="font-semibold text-gray-900 mt-1 group-hover:text-green-700 transition-colors">
+              {rangeDisplay || "Chưa chọn thời gian"}
+            </p>
+            
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-sm text-gray-600">
+                Tổng: <span className="font-medium text-gray-800">{totalHours} giờ</span>
+              </span>
+            </div>
 
-        {timeBoxColor === "yellow" && (
-          <p className="text-xs text-yellow-600 mt-1">
-            Khung giờ buổi khuya (23:00 tới 6:00) có thể có ít lựa chọn xe hơn so với các khung giờ khác.
-          </p>
-        )}
+            {timeBoxColor === "yellow" && (
+              <div className="mt-3 pt-3 border-t border-yellow-200">
+                <p className="text-xs text-yellow-700 flex items-start gap-2">
+                  <span className="text-base">⚠️</span>
+                  <span>
+                    Khung giờ buổi khuya (22:00 - 7:00) có thể có ít lựa chọn xe hơn so với các khung giờ khác.
+                  </span>
+                </p>
+              </div>
+            )}
+
+            {timeBoxColor === "red" && (
+              <div className="mt-3 pt-3 border-t border-red-200">
+                <p className="text-xs text-red-700 flex items-start gap-2">
+                  <span className="text-base">🚫</span>
+                  <span>
+                    Thời gian không hợp lệ. Vui lòng chọn lại.
+                  </span>
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Icon chỉnh sửa */}
+          <div className="ml-3 flex-shrink-0">
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              className="h-5 w-5 text-gray-400 group-hover:text-green-600 transition-colors" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </div>
+        </div>
       </div>
 
       <hr />

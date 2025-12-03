@@ -18,26 +18,26 @@ const BookingStatisticsCard = () => {
   });
 
   useEffect(() => {
+    const fetchStatistics = async () => {
+      try {
+        setLoading(true);
+        const queryParams = new URLSearchParams();
+        if (dateFilter.startDate) queryParams.append("startDate", dateFilter.startDate);
+        if (dateFilter.endDate) queryParams.append("endDate", dateFilter.endDate);
+
+        const response = await API.get(`/bookings/admin/statistics?${queryParams.toString()}`);
+        if (response.data.success) {
+          setStatistics(response.data.statistics);
+        }
+      } catch (error) {
+        console.error("Error fetching statistics:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchStatistics();
   }, [dateFilter]);
-
-  const fetchStatistics = async () => {
-    try {
-      setLoading(true);
-      const queryParams = new URLSearchParams();
-      if (dateFilter.startDate) queryParams.append("startDate", dateFilter.startDate);
-      if (dateFilter.endDate) queryParams.append("endDate", dateFilter.endDate);
-
-      const response = await API.get(`/bookings/admin/statistics?${queryParams.toString()}`);
-      if (response.data.success) {
-        setStatistics(response.data.statistics);
-      }
-    } catch (error) {
-      console.error("Error fetching statistics:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("vi-VN", {

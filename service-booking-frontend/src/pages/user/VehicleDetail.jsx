@@ -1,18 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import API from "../../api/axios";
 import { useSearch } from "../../context/SearchContext";
 import Header from "../../components/user/Header";
 import { MapPin, ArrowLeft } from "lucide-react";
 import { formatCurrencyVN, formatBookingRange } from "../../utils/formatUtils";
-import SearchBarResult from "../../components/user/SearchBarResult";
 import DiscountModal from "../../components/user/DiscountModal";
 import DeliveryLocationModal from "../../components/user/DeliveryLocationModal";
 
 // Import components đã tách
 import ImageGallery from "../../components/user/ImageGallery";
-import PickupTypeSelector from "../../components/user/PickupTypeSelector";
 import PricingCard from "../../components/user/PricingCard";
+import TimeSelectionModal from "../../components/user/TimeSelectionModal";
 
 const VehicleDetail = () => {
   const { id } = useParams();
@@ -20,18 +19,15 @@ const VehicleDetail = () => {
   const { searchData, setSearchData } = useSearch();
 
   const [vehicle, setVehicle] = useState(null);
-  const [showTimeForm, setShowTimeForm] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [selectedDiscount, setSelectedDiscount] = useState(null);
-  const [timeBoxColor, setTimeBoxColor] = useState("gray");
   const [selectedPickup, setSelectedPickup] = useState("self");
   const [deliveryLocation, setDeliveryLocation] = useState(searchData?.location || "");
   const [selectedInsurance, setSelectedInsurance] = useState('premium');
   const [selfReturn, setSelfReturn] = useState(false);
-  
-  const now = new Date();
-  let pickup, ret;
+  const [showTimeModal, setShowTimeModal] = useState(false);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
 
   useEffect(() => {
     const fetchVehicle = async () => {
@@ -44,35 +40,46 @@ const VehicleDetail = () => {
     };
     fetchVehicle();
   }, [id]);
-  
-  // Tính toán thời gian thuê
-  if (searchData?.pickupFull && searchData?.returnFull) {
-    pickup = new Date(searchData.pickupFull);
-    ret = new Date(searchData.returnFull);
-  } else {
-    pickup = new Date(now);
-    if (pickup.getMinutes() > 15) {
-      pickup.setHours(pickup.getHours() + 1);
-      pickup.setMinutes(0);
+
+  //  Sử dụng useMemo để tính toán pickup và ret dựa trên searchData
+  const { pickup, ret } = useMemo(() => {
+    const now = new Date();
+    
+    if (searchData?.pickupFull && searchData?.returnFull) {
+      return {
+        pickup: new Date(searchData.pickupFull),
+        ret: new Date(searchData.returnFull)
+      };
     } else {
-      pickup.setMinutes(0);
+      let defaultPickup = new Date(now);
+      if (defaultPickup.getMinutes() > 15) {
+        defaultPickup.setHours(defaultPickup.getHours() + 1);
+        defaultPickup.setMinutes(0);
+      } else {
+        defaultPickup.setMinutes(0);
+      }
+
+      defaultPickup.setHours(defaultPickup.getHours() + 2);
+      const defaultRet = new Date(defaultPickup);
+      defaultRet.setHours(defaultRet.getHours() + 52);
+
+      return {
+        pickup: defaultPickup,
+        ret: defaultRet
+      };
     }
+  }, [searchData]); //  Re-calculate khi searchData thay đổi
 
-    pickup.setHours(pickup.getHours() + 2);
-    ret = new Date(pickup);
-    ret.setHours(ret.getHours() + 52);
-  }
-
-  useEffect(() => {
-    if (!pickup) return;
+  //  Tính timeBoxColor dựa trên pickup
+  const timeBoxColor = useMemo(() => {
     const pickupHour = pickup.getHours();
-    if (pickupHour >= 22 || pickupHour < 6) setTimeBoxColor("yellow");
-    else setTimeBoxColor("gray");
+    if (pickupHour >= 22 || pickupHour < 6) return "yellow";
+    return "gray";
   }, [pickup]);
   
   if (!vehicle) return <div className="text-center text-gray-700 py-10">Đang tải...</div>;
 
-  // Tính toán giá
+  // Tính toán giá - useMemo để tránh re-calculate không cần thiết
   const totalHours = Math.max(Math.round((ret - pickup) / (1000 * 60 * 60)), 0);
   const images = vehicle.images || [];
 
@@ -149,13 +156,33 @@ const VehicleDetail = () => {
     }
   };
 
-  // Chuyển sang trang xác nhận booking
-  const handleGoToConfirmation = () => {
+  //  Validate availability trước khi chuyển sang trang confirm
+  const handleGoToConfirmation = async () => {
     if (isReturnTimeInvalid) {
       alert('Vui lòng chọn giờ trả xe hợp lệ (7:00 - 22:00) hoặc chọn "Khách trả xe tại vị trí xe đậu"');
       return;
     }
 
+    //  Kiểm tra availability trước khi proceed
+    try {
+      const res = await API.post(`/api/vehicles/${id}/check-availability`, {
+        pickupDate: pickup.toISOString(),
+        returnDate: ret.toISOString()
+      });
+
+      if (!res.data.available) {
+        alert('Xe đã được đặt trong khung giờ này. Vui lòng chọn thời gian khác.');
+        // Mở modal chọn thời gian
+        setShowTimeModal(true);
+        return;
+      }
+    } catch (err) {
+      console.error('Error checking availability:', err);
+      alert('Không thể kiểm tra tình trạng xe. Vui lòng thử lại.');
+      return;
+    }
+
+    //  Nếu available, tiếp tục sang trang confirm
     navigate('/booking/confirm', {
       state: {
         vehicle,
@@ -176,6 +203,16 @@ const VehicleDetail = () => {
         depositAmount: totalDeposit
       }
     });
+  };
+
+  const handleTimeConfirm = (timeData) => {
+    //  Cập nhật searchData với thời gian mới
+    setSearchData({
+      ...searchData,
+      ...timeData
+    });
+
+    setShowTimeModal(false);
   };
 
   return (
@@ -234,7 +271,7 @@ const VehicleDetail = () => {
           timeBoxColor={timeBoxColor}
           rangeDisplay={rangeDisplay}
           totalHours={totalHours}
-          onTimeClick={() => setShowTimeForm(true)}
+          onTimeClick={() => setShowTimeModal(true)}
           // Pickup props
           selectedPickup={selectedPickup}
           onPickupChange={handlePickupChange}
@@ -263,12 +300,14 @@ const VehicleDetail = () => {
       </div>
 
       {/* Form chọn thời gian */}
-      {showTimeForm && (
-        <div className="fixed inset-0 bg-black/40 z-[100]" onClick={() => setShowTimeForm(false)}>
-          <div onClick={(e) => e.stopPropagation()}>
-            <SearchBarResult />
-          </div>
-        </div>
+      {showTimeModal && (
+        <TimeSelectionModal
+          initialPickup={pickup}
+          initialReturn={ret}
+          vehicleId={id}
+          onConfirm={handleTimeConfirm}
+          onClose={() => setShowTimeModal(false)}
+        />
       )}
 
       {/* Discount Modal */}

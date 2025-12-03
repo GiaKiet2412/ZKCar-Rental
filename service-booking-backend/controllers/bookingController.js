@@ -2,6 +2,7 @@ import Booking from '../models/Booking.js';
 import Discount from '../models/Discount.js';
 import User from '../models/User.js';
 import Vehicle from '../models/Vehicle.js';
+import emailService from '../services/emailService.js';
 
 // Tạo booking mới
 export const createBooking = async (req, res) => {
@@ -17,27 +18,61 @@ export const createBooking = async (req, res) => {
       VAT,
       pickupType,
       deliveryLocation,
-      customerInfo, // Từ form (cho cả user và guest)
-      guestInfo,    // Legacy support
+      customerInfo, 
+      guestInfo,    
       notes
     } = req.body;
-
-    const userId = req.user?._id;
-    let finalDiscountAmount = 0;
-    let discountInfo = null;
 
     const vehicle = await Vehicle.findById(vehicleId);
     if (!vehicle) {
       return res.status(404).json({ message: 'Không tìm thấy xe' });
     }
 
-    // ✅ LOGIC MỚI: Tự động lấy phone từ user nếu có
+    const pickup = new Date(pickupDate);
+    const returnD = new Date(returnDate);
+    const pickupWithBuffer = new Date(pickup.getTime() - 60 * 60 * 1000); // -1h
+    const returnWithBuffer = new Date(returnD.getTime() + 60 * 60 * 1000); // +1h
+
+    const conflictingBooking = await Booking.findOne({
+      vehicle: vehicleId,
+      status: { $in: ['pending', 'confirmed', 'ongoing'] },
+      paymentStatus: 'paid',
+      $or: [
+        {
+          pickupDate: { $lte: pickupWithBuffer },
+          returnDate: { $gte: pickupWithBuffer }
+        },
+        {
+          pickupDate: { $lte: returnWithBuffer },
+          returnDate: { $gte: returnWithBuffer }
+        },
+        {
+          pickupDate: { $gte: pickupWithBuffer },
+          returnDate: { $lte: returnWithBuffer }
+        }
+      ]
+    });
+
+    if (conflictingBooking) {
+      return res.status(400).json({
+        success: false,
+        message: 'Xe đã được đặt trong khung giờ này. Vui lòng chọn thời gian khác.',
+        conflictingBooking: {
+          pickupDate: conflictingBooking.pickupDate,
+          returnDate: conflictingBooking.returnDate
+        }
+      });
+    }
+    
+    const userId = req.user?._id;
+    let finalDiscountAmount = 0;
+    let discountInfo = null;
+
     let finalCustomerInfo = customerInfo || guestInfo;
     
     if (userId) {
       const user = await User.findById(userId);
       if (user) {
-        // Ưu tiên phone từ form, fallback về user.phone
         finalCustomerInfo = {
           name: customerInfo?.name || user.name,
           email: customerInfo?.email || user.email,
@@ -142,8 +177,8 @@ export const createBooking = async (req, res) => {
     const booking = new Booking({
       vehicle: vehicleId,
       user: userId || null,
-      customerInfo: finalCustomerInfo, // ✅ Luôn lưu customerInfo
-      guestInfo: userId ? null : finalCustomerInfo, // Legacy
+      customerInfo: finalCustomerInfo, 
+      guestInfo: userId ? null : finalCustomerInfo, 
       pickupDate,
       returnDate,
       pickupType: pickupType || 'self',
@@ -412,14 +447,17 @@ export const cancelBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user._id;
+    const { reason } = req.body; // Có thể nhận lý do hủy từ client
 
-    const booking = await Booking.findById(id);
+    const booking = await Booking.findById(id)
+      .populate('vehicle')
+      .populate('user');
 
     if (!booking) {
       return res.status(404).json({ message: 'Không tìm thấy booking' });
     }
 
-    if (booking.user && booking.user.toString() !== userId.toString()) {
+    if (booking.user && booking.user._id.toString() !== userId.toString()) {
       return res.status(403).json({ message: 'Không có quyền hủy booking này' });
     }
 
@@ -432,11 +470,26 @@ export const cancelBooking = async (req, res) => {
     booking.status = 'cancelled';
     await booking.save();
 
+    // Hoàn lại discount
     if (booking.discountCode && booking.paymentStatus === 'paid') {
       await Discount.findOneAndUpdate(
         { code: booking.discountCode },
         { $inc: { quantity: 1 } }
       );
+    }
+
+    // GỬI EMAIL THÔNG BÁO HỦY
+    try {
+      const customerEmail = 
+        booking.customerInfo?.email || 
+        booking.user?.email || 
+        booking.guestInfo?.email;
+
+      if (customerEmail) {
+        await emailService.sendCancellationEmail(booking, customerEmail, reason);
+      }
+    } catch (emailError) {
+      console.error('Lỗi gửi email hủy:', emailError);
     }
 
     res.json({

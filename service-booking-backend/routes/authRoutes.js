@@ -25,11 +25,50 @@ router.post("/send-otp", async (req, res) => {
       },
     });
 
+    // ✅ THAY ĐỔI: Thêm tên hiển thị cho người gửi
     await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+      from: `"ZKCarRental" <${process.env.EMAIL_USER}>`, // ✅ Format: "Tên hiển thị" <email>
       to: email,
-      subject: "Mã xác nhận đăng ký tài khoản",
+      subject: "Mã xác nhận đăng ký tài khoản - ZKCarRental",
       text: `Mã xác nhận của bạn là: ${otp}. Mã này sẽ hết hạn sau 5 phút.`,
+      // ✅ TÙY CHỌN: Thêm HTML để email đẹp hơn
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #16a34a; margin: 0;">ZKCarRental</h1>
+            <p style="color: #666; margin-top: 5px;">Dịch vụ cho thuê xe điện tự lái</p>
+          </div>
+          
+          <h2 style="color: #333;">Xác nhận đăng ký tài khoản</h2>
+          
+          <p style="color: #555; line-height: 1.6;">
+            Chào bạn,<br><br>
+            Cảm ơn bạn đã đăng ký tài khoản tại <strong>ZKCarRental</strong>. 
+            Vui lòng sử dụng mã OTP dưới đây để hoàn tất quá trình đăng ký:
+          </p>
+          
+          <div style="background-color: #f0fdf4; border: 2px dashed #16a34a; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
+            <p style="color: #666; margin: 0 0 10px 0; font-size: 14px;">Mã xác nhận của bạn:</p>
+            <h1 style="color: #16a34a; margin: 0; font-size: 36px; letter-spacing: 5px;">${otp}</h1>
+          </div>
+          
+          <p style="color: #ef4444; font-weight: bold; text-align: center;">
+            ⏱️ Mã này sẽ hết hạn sau 5 phút
+          </p>
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+            <p style="color: #888; font-size: 12px; line-height: 1.5;">
+              <strong>Lưu ý:</strong> Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email này.
+              Đừng chia sẻ mã OTP với bất kỳ ai để đảm bảo an toàn tài khoản.
+            </p>
+            
+            <p style="color: #888; font-size: 12px; margin-top: 20px;">
+              Trân trọng,<br>
+              <strong style="color: #16a34a;">Đội ngũ ZKCarRental</strong>
+            </p>
+          </div>
+        </div>
+      `
     });
 
     res.json({ message: "Đã gửi mã xác nhận đến email của bạn" });
@@ -55,9 +94,9 @@ router.post("/verify-otp", async (req, res) => {
   }
 });
 
-// ✅ ĐĂNG KÝ - LƯU PHONE
+// ĐĂNG KÝ
 router.post("/register", async (req, res) => {
-  const { name, email, phone, password } = req.body; // ✅ THÊM PHONE
+  const { name, email, phone, password } = req.body;
   
   try {
     const verified = await EmailVerification.findOne({ email });
@@ -68,12 +107,11 @@ router.post("/register", async (req, res) => {
     if (existingUser)
       return res.status(400).json({ message: "Email đã tồn tại" });
 
-    // ✅ TẠO USER VỚI PHONE
     const newUser = await User.create({
       name,
       email,
-      phone: phone || null, // ✅ LƯU PHONE
-      password, // Password sẽ tự hash qua pre-save hook
+      phone: phone || null,
+      password,
       role: "user",
     });
 
@@ -92,7 +130,7 @@ router.post("/register", async (req, res) => {
         id: newUser._id,
         name: newUser.name,
         email: newUser.email,
-        phone: newUser.phone, // ✅ TRẢ VỀ PHONE
+        phone: newUser.phone,
         role: newUser.role,
       },
     });
@@ -102,7 +140,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// ✅ ĐĂNG NHẬP - TRẢ VỀ PHONE
+// ĐĂNG NHẬP
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -130,7 +168,7 @@ router.post("/login", async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        phone: user.phone, // ✅ TRẢ VỀ PHONE
+        phone: user.phone,
         role: user.role,
       },
     });

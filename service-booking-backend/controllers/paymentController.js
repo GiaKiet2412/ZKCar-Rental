@@ -2,12 +2,11 @@ import Booking from '../models/Booking.js';
 import Discount from '../models/Discount.js';
 import User from '../models/User.js';
 import vnpayService from '../services/vnpayService.js';
+import emailService from '../services/emailService.js';
 
 // Tạo URL thanh toán VNPay
 export const createPaymentUrl = async (req, res) => {
   try {
-    console.log('📥 Received payment request:', req.body);
-
     const { bookingId, amount, bankCode, paymentType } = req.body;
 
     // Validate input
@@ -47,8 +46,6 @@ export const createPaymentUrl = async (req, res) => {
     }
 
     const orderInfo = `Thanh toan thue xe ${bookingId}`;
-
-    console.log('🔧 Creating payment URL with vnpayService...');
     
     const paymentUrl = vnpayService.createPaymentUrl(
       req,
@@ -60,8 +57,6 @@ export const createPaymentUrl = async (req, res) => {
 
     booking.vnpayOrderId = orderId;
     await booking.save();
-
-    console.log('✅ Payment URL created:', paymentUrl);
 
     res.json({
       success: true,
@@ -83,7 +78,10 @@ export const createPaymentUrl = async (req, res) => {
 // HELPER: Cập nhật booking sau thanh toán
 // ==========================================
 const updateBookingAfterPayment = async (bookingId, transactionNo, bankCode) => {
-  const booking = await Booking.findById(bookingId);
+  const booking = await Booking.findById(bookingId)
+    .populate('vehicle')
+    .populate('user', 'name email phone');
+    
   if (!booking) {
     throw new Error('Booking not found');
   }
@@ -117,6 +115,25 @@ const updateBookingAfterPayment = async (bookingId, transactionNo, bankCode) => 
       user.addUsedDiscount(booking.discountCode);
       await user.save();
     }
+  }
+
+  // GỬI EMAIL XÁC NHẬN
+  try {
+    // Ưu tiên: customerInfo.email > user.email > guestInfo.email
+    const customerEmail = 
+      booking.customerInfo?.email || 
+      booking.user?.email || 
+      booking.guestInfo?.email;
+
+    if (customerEmail) {
+      await emailService.sendBookingConfirmation(booking, customerEmail);
+      console.log(`Đã gửi email xác nhận đến: ${customerEmail}`);
+    } else {
+      console.warn('Không có email để gửi xác nhận');
+    }
+  } catch (emailError) {
+    // Log lỗi nhưng không throw để không ảnh hưởng đến luồng thanh toán
+    console.error('Lỗi gửi email xác nhận:', emailError);
   }
 
   return booking;
@@ -220,14 +237,12 @@ export const vnpayReturn = async (req, res) => {
 
     // Xử lý theo kết quả thanh toán
     if (verifyResult.responseCode === '00') {
-      // THANH TOÁN THÀNH CÔNG - CẬP NHẬT BOOKING
       try {
         await updateBookingAfterPayment(
           bookingId,
           verifyResult.transactionNo,
           verifyResult.bankCode
         );
-        console.log('Booking updated successfully after payment');
       } catch (error) {
         console.error('Error updating booking after payment:', error);
       }
