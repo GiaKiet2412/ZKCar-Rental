@@ -7,7 +7,6 @@ class EmailService {
   constructor() {
     // Kiểm tra credentials trước khi tạo transporter
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.warn('⚠️ EMAIL_USER hoặc EMAIL_PASS chưa được cấu hình trong .env');
       this.transporter = null;
       return;
     }
@@ -18,15 +17,6 @@ class EmailService {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS, // App Password (không phải mật khẩu Gmail thông thường)
       },
-    });
-
-    // Verify connection
-    this.transporter.verify((error, success) => {
-      if (error) {
-        console.error('❌ Lỗi kết nối email service:', error);
-      } else {
-        console.log('✅ Email service đã sẵn sàng');
-      }
     });
   }
 

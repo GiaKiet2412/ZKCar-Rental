@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
+import { FaChartLine, FaEyeSlash } from "react-icons/fa";
 import API from "../../api/axios";
 import BookingTable from "../../components/admin/BookingTable";
 import BookingDetailModal from "../../components/admin/BookingDetailModal";
+import BookingStatisticsCard from "../../components/admin/BookingStatisticsCard";
 import ToastNotification from "../../components/common/ToastNotification";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
 
@@ -9,11 +11,11 @@ const BookingManagementPage = () => {
   const [bookings, setBookings] = useState([]);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showStatistics, setShowStatistics] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Filter states
   const [filters, setFilters] = useState({
     status: "",
     startDate: "",
@@ -30,7 +32,6 @@ const BookingManagementPage = () => {
 
   useEffect(() => {
     fetchBookings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
   const fetchBookings = async () => {
@@ -81,8 +82,18 @@ const BookingManagementPage = () => {
   };
 
   const handleUpdateStatus = async (bookingId, newStatus) => {
+    const statusConfig = {
+      confirmed: { title: "Xác nhận đơn đặt xe", type: "success" },
+      ongoing: { title: "Bắt đầu chuyến đi", type: "default" },
+      cancelled: { title: "Hủy đơn đặt xe", type: "delete" }
+    };
+
+    const config = statusConfig[newStatus] || { title: "Cập nhật trạng thái", type: "default" };
+
     setConfirmDialog({
+      title: config.title,
       message: `Bạn có chắc muốn chuyển trạng thái thành "${getStatusText(newStatus)}"?`,
+      type: config.type,
       onConfirm: async () => {
         try {
           const response = await API.patch(`api/bookings/${bookingId}/status`, {
@@ -113,7 +124,9 @@ const BookingManagementPage = () => {
 
   const handleCompleteBooking = async (bookingId) => {
     setConfirmDialog({
+      title: "Hoàn thành chuyến đi",
       message: "Xác nhận hoàn thành chuyến đi này?",
+      type: "success",
       onConfirm: async () => {
         try {
           const response = await API.patch(`api/bookings/${bookingId}/complete`);
@@ -140,7 +153,7 @@ const BookingManagementPage = () => {
     setFilters((prev) => ({
       ...prev,
       [key]: value,
-      page: 1, // Reset về trang 1 khi filter thay đổi
+      page: 1,
     }));
   };
 
@@ -182,14 +195,41 @@ const BookingManagementPage = () => {
 
   return (
     <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Quản lý đơn đặt xe</h1>
-        <p className="text-gray-600">
-          Tổng số đơn: {pagination.totalBookings} | Trang {pagination.currentPage}/{pagination.totalPages}
-        </p>
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Quản lý đơn đặt xe</h1>
+          <p className="text-gray-600">
+            Tổng số đơn: {pagination.totalBookings} | Trang {pagination.currentPage}/{pagination.totalPages}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowStatistics(!showStatistics)}
+          className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 shadow-md hover:shadow-lg ${
+            showStatistics 
+              ? 'bg-gray-500 hover:bg-gray-600 text-white' 
+              : 'bg-green-600 hover:bg-green-700 text-white'
+          }`}
+        >
+          {showStatistics ? (
+            <>
+              <FaEyeSlash size={18} />
+              <span>Ẩn thống kê</span>
+            </>
+          ) : (
+            <>
+              <FaChartLine size={18} />
+              <span>Xem thống kê</span>
+            </>
+          )}
+        </button>
       </div>
 
-      {/* Filters */}
+      {showStatistics && (
+        <div className="mb-6 animate-fadeIn">
+          <BookingStatisticsCard />
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-md p-4 mb-6">
         <h2 className="text-lg font-semibold mb-4">Bộ lọc</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -240,7 +280,6 @@ const BookingManagementPage = () => {
         </div>
       </div>
 
-      {/* Table */}
       {loading ? (
         <div className="text-center py-8">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
@@ -257,25 +296,24 @@ const BookingManagementPage = () => {
             getStatusColor={getStatusColor}
           />
 
-          {/* Pagination */}
           {pagination.totalPages > 1 && (
             <div className="flex justify-center items-center gap-2 mt-6">
               <button
                 onClick={() => handlePageChange(filters.page - 1)}
                 disabled={filters.page === 1}
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
               >
                 Trước
               </button>
               
-              <span className="px-4 py-2">
+              <span className="px-4 py-2 font-medium">
                 Trang {pagination.currentPage} / {pagination.totalPages}
               </span>
               
               <button
                 onClick={() => handlePageChange(filters.page + 1)}
                 disabled={filters.page === pagination.totalPages}
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
               >
                 Sau
               </button>
@@ -284,7 +322,6 @@ const BookingManagementPage = () => {
         </>
       )}
 
-      {/* Detail Modal */}
       {showDetailModal && selectedBooking && (
         <BookingDetailModal
           booking={selectedBooking}
@@ -299,7 +336,6 @@ const BookingManagementPage = () => {
         />
       )}
 
-      {/* Toast */}
       {toast && (
         <ToastNotification
           message={toast.message}
@@ -308,10 +344,11 @@ const BookingManagementPage = () => {
         />
       )}
 
-      {/* Confirm Dialog */}
       {confirmDialog && (
         <ConfirmDialog
+          title={confirmDialog.title}
           message={confirmDialog.message}
+          type={confirmDialog.type}
           onConfirm={confirmDialog.onConfirm}
           onCancel={confirmDialog.onCancel}
         />

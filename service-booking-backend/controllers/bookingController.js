@@ -544,3 +544,16 @@ export const completeBooking = async (req, res) => {
     });
   }
 };
+
+export const myBooking = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ user: req.user._id })
+      .populate('vehicle', 'name images pricePerDay')
+      .sort({ createdAt: -1 });
+
+    res.json(bookings);
+  } catch (error) {
+    console.error('Error getting user bookings:', error);
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
+};

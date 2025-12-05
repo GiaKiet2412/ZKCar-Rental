@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import EmailVerification from "../models/EmailVerification.js";
+import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -25,13 +26,13 @@ router.post("/send-otp", async (req, res) => {
       },
     });
 
-    // ✅ THAY ĐỔI: Thêm tên hiển thị cho người gửi
+    // Thêm tên hiển thị cho người gửi
     await transporter.sendMail({
-      from: `"ZKCarRental" <${process.env.EMAIL_USER}>`, // ✅ Format: "Tên hiển thị" <email>
+      from: `"ZKCarRental" <${process.env.EMAIL_USER}>`, // Format: "Tên hiển thị" <email>
       to: email,
       subject: "Mã xác nhận đăng ký tài khoản - ZKCarRental",
       text: `Mã xác nhận của bạn là: ${otp}. Mã này sẽ hết hạn sau 5 phút.`,
-      // ✅ TÙY CHỌN: Thêm HTML để email đẹp hơn
+      // Thêm HTML để email đẹp hơn
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
           <div style="text-align: center; margin-bottom: 30px;">
@@ -53,7 +54,7 @@ router.post("/send-otp", async (req, res) => {
           </div>
           
           <p style="color: #ef4444; font-weight: bold; text-align: center;">
-            ⏱️ Mã này sẽ hết hạn sau 5 phút
+             Mã này sẽ hết hạn sau 5 phút
           </p>
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
@@ -175,6 +176,74 @@ router.post("/login", async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Lỗi đăng nhập" });
+  }
+});
+
+// Lấy thông tin cá nhân
+router.get('/profile', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'Người dùng không tồn tại' });
+    }
+
+    // Calculate statistics from bookings
+    const Booking = (await import('../models/Booking.js')).default;
+    const bookings = await Booking.find({ user: user._id });
+    const completedBookings = bookings.filter(b => b.status === 'completed');
+    
+    const totalSpent = completedBookings.reduce((sum, booking) => {
+      return sum + (booking.totalPrice || 0);
+    }, 0);
+
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone || '',
+      address: user.address || '',
+      drivingLicense: user.drivingLicense || '',
+      role: user.role,
+      isVerified: user.isVerified,
+      createdAt: user.createdAt,
+      totalRentals: completedBookings.length,
+      totalSpent: totalSpent
+    });
+  } catch (error) {
+    console.error('Error getting user profile:', error);
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
+});
+
+router.put('/profile', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ message: 'Người dùng không tồn tại' });
+    }
+
+    // Update allowed fields only
+    user.name = req.body.name || user.name;
+    user.phone = req.body.phone || user.phone;
+    user.address = req.body.address || user.address;
+    user.drivingLicense = req.body.drivingLicense || user.drivingLicense;
+
+    const updatedUser = await user.save();
+
+    res.json({
+      _id: updatedUser._id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      phone: updatedUser.phone,
+      address: updatedUser.address,
+      drivingLicense: updatedUser.drivingLicense,
+      message: 'Cập nhật thông tin thành công'
+    });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 });
 

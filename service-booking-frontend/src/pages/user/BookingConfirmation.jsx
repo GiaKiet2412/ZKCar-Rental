@@ -76,7 +76,7 @@ const BookingConfirmation = () => {
       setIsCreating(true);
       setError('');
 
-      // ✅ GỬI customerInfo thay vì guestInfo
+      // GỬI customerInfo thay vì guestInfo
       const requestData = {
         vehicleId: vehicle._id,
         pickupDate: pickup,
@@ -88,7 +88,7 @@ const BookingConfirmation = () => {
         deliveryFee: deliveryFee,
         VAT: VATRounded,
         discountCode: discountCode || null,
-        customerInfo: {  // ✅ THAY ĐỔI: dùng customerInfo
+        customerInfo: {  // THAY ĐỔI: dùng customerInfo
           name: customerInfo.name,
           phone: customerInfo.phone,
           email: customerInfo.email || null

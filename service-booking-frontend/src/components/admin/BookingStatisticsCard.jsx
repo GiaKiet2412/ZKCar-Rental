@@ -25,7 +25,7 @@ const BookingStatisticsCard = () => {
         if (dateFilter.startDate) queryParams.append("startDate", dateFilter.startDate);
         if (dateFilter.endDate) queryParams.append("endDate", dateFilter.endDate);
 
-        const response = await API.get(`/bookings/admin/statistics?${queryParams.toString()}`);
+        const response = await API.get(`/api/bookings/admin/statistics?${queryParams.toString()}`);
         if (response.data.success) {
           setStatistics(response.data.statistics);
         }
@@ -68,7 +68,6 @@ const BookingStatisticsCard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Date Filter */}
       <div className="bg-white rounded-lg shadow-md p-4">
         <h3 className="text-lg font-semibold mb-4">Bộ lọc thời gian</h3>
         <div className="grid grid-cols-2 gap-4">
@@ -97,7 +96,6 @@ const BookingStatisticsCard = () => {
         </div>
       </div>
 
-      {/* Status Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Chờ xác nhận"
@@ -125,7 +123,6 @@ const BookingStatisticsCard = () => {
         />
       </div>
 
-      {/* Revenue Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
           title="Tổng doanh thu"
@@ -148,7 +145,6 @@ const BookingStatisticsCard = () => {
         />
       </div>
 
-      {/* Top Vehicles */}
       {statistics.topVehicles && statistics.topVehicles.length > 0 && (
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -189,7 +185,6 @@ const BookingStatisticsCard = () => {
         </div>
       )}
 
-      {/* Daily Revenue Chart */}
       {statistics.dailyRevenue && statistics.dailyRevenue.length > 0 && (
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-lg font-semibold mb-4">Doanh thu 7 ngày gần nhất</h3>

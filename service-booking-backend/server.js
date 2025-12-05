@@ -1,19 +1,11 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: './.env' });
 
-console.log("ENV LOADED?", {
-  PORT: process.env.PORT,
-  EMAIL_USER: process.env.EMAIL_USER,
-  EMAIL_PASS: process.env.EMAIL_PASS,
-});
-
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-
-console.log("DEBUG ENV CHECK:", process.env.EMAIL_USER, process.env.EMAIL_PASS);
 
 //Vehicles
 import authRoutes from './routes/authRoutes.js';

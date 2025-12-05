@@ -1,5 +1,5 @@
 import React from "react";
-import { FaEye, FaCheck, FaTimes } from "react-icons/fa";
+import { FaEye, FaCheck, FaTimes, FaInfoCircle } from "react-icons/fa";
 
 const BookingTable = ({
   bookings,
@@ -36,14 +36,22 @@ const BookingTable = ({
     return colorMap[status] || "bg-gray-100 text-gray-800";
   };
 
-  const getPaymentStatusText = (status) => {
-    const textMap = {
-      pending: "Chờ thanh toán",
-      paid: "Đã thanh toán",
-      failed: "Thất bại",
-      refunded: "Đã hoàn tiền",
-    };
-    return textMap[status] || status;
+  const getPaymentStatusText = (booking) => {
+    if (booking.paymentStatus !== 'paid') {
+      const textMap = {
+        pending: "Chờ thanh toán",
+        failed: "Thất bại",
+        refunded: "Đã hoàn tiền",
+      };
+      return textMap[booking.paymentStatus] || booking.paymentStatus;
+    }
+
+    // Nếu đã thanh toán, hiển thị chi tiết
+    if (booking.paymentType === 'hold') {
+      return `Đã cọc ${formatCurrency(booking.paidAmount || booking.holdFee)}`;
+    } else {
+      return `Đã thanh toán ${formatCurrency(booking.paidAmount)}`;
+    }
   };
 
   const canUpdateToConfirmed = (booking) => {
@@ -144,24 +152,43 @@ const BookingTable = ({
                 </td>
                 
                 <td className="px-4 py-4 whitespace-nowrap">
-                  <div className="text-sm font-semibold text-gray-900">
-                    {formatCurrency(booking.finalAmount)}
-                  </div>
-                  {booking.discountAmount > 0 && (
-                    <div className="text-xs text-green-600">
-                      Giảm: {formatCurrency(booking.discountAmount)}
+                  <div className="text-sm">
+                    <div className="font-semibold text-gray-900">
+                      {formatCurrency(booking.finalAmount)}
                     </div>
-                  )}
+                    {booking.discountAmount > 0 && (
+                      <div className="text-xs text-green-600">
+                        Giảm: {formatCurrency(booking.discountAmount)}
+                      </div>
+                    )}
+                    {booking.paymentType === 'hold' && (
+                      <div className="text-xs text-blue-600 mt-1">
+                        + Cọc: {formatCurrency(booking.depositAmount || 3000000)}
+                      </div>
+                    )}
+                  </div>
                 </td>
                 
-                <td className="px-4 py-4 whitespace-nowrap">
-                  <span
-                    className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getPaymentStatusColor(
-                      booking.paymentStatus
-                    )}`}
-                  >
-                    {getPaymentStatusText(booking.paymentStatus)}
-                  </span>
+                <td className="px-4 py-4">
+                  <div className="space-y-1">
+                    <span
+                      className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full whitespace-nowrap ${getPaymentStatusColor(
+                        booking.paymentStatus
+                      )}`}
+                    >
+                      {getPaymentStatusText(booking)}
+                    </span>
+                    
+                    {/* Hiển thị số tiền còn phải trả */}
+                    {booking.paymentStatus === 'paid' && 
+                     booking.paymentType === 'hold' && 
+                     booking.remainingAmount > 0 && (
+                      <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
+                        <FaInfoCircle size={10} />
+                        Còn: {formatCurrency(booking.remainingAmount)}
+                      </div>
+                    )}
+                  </div>
                 </td>
                 
                 <td className="px-4 py-4 whitespace-nowrap">
