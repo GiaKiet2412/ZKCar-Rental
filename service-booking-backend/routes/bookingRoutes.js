@@ -1,7 +1,6 @@
 import express from 'express';
 import {
   createBooking,
-  getUserBookings,
   getBookingById,
   getAllBookings,
   getBookingStatistics,
@@ -21,10 +20,9 @@ router.patch('/:id/status', protect, checkRole('admin'), updateBookingStatus);
 router.patch('/:id/complete', protect, checkRole('admin'), completeBooking);
 
 // User routes - CHO PHÉP GUEST TẠO BOOKING
+router.get('/my-bookings', protect, myBooking);
 router.post('/', optionalAuth, createBooking);
-router.get('/user', protect, getUserBookings);
 router.get('/:id', optionalAuth, getBookingById);
 router.patch('/:id/cancel', protect, cancelBooking);
-router.get('/my-bookings', protect, myBooking);
 
 export default router;

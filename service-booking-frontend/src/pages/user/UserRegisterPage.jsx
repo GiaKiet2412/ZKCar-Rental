@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 const UserRegisterPage = () => {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState(""); // ✅ THÊM PHONE
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -52,7 +52,6 @@ const UserRegisterPage = () => {
           required
         />
 
-        {/* ✅ THÊM PHONE INPUT */}
         <input
           type="tel"
           placeholder="Số điện thoại (10 chữ số)"

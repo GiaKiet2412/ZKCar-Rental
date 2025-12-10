@@ -30,8 +30,8 @@ export const createBooking = async (req, res) => {
 
     const pickup = new Date(pickupDate);
     const returnD = new Date(returnDate);
-    const pickupWithBuffer = new Date(pickup.getTime() - 60 * 60 * 1000); // -1h
-    const returnWithBuffer = new Date(returnD.getTime() + 60 * 60 * 1000); // +1h
+    const pickupWithBuffer = new Date(pickup.getTime() - 60 * 60 * 1000);
+    const returnWithBuffer = new Date(returnD.getTime() + 60 * 60 * 1000);
 
     const conflictingBooking = await Booking.findOne({
       vehicle: vehicleId,
@@ -81,12 +81,27 @@ export const createBooking = async (req, res) => {
       }
     }
 
+    // ===== VALIDATION BỔ SUNG: ĐẢM BẢO EMAIL LUÔN CÓ =====
+    if (!finalCustomerInfo || !finalCustomerInfo.email || !finalCustomerInfo.email.includes('@')) {
+      return res.status(400).json({ 
+        message: 'Vui lòng nhập địa chỉ email hợp lệ. Email cần thiết để nhận thông tin đặt xe và tra cứu đơn hàng.' 
+      });
+    }
+
     // Validate phone
     if (!finalCustomerInfo || !finalCustomerInfo.phone) {
       return res.status(400).json({ 
         message: 'Vui lòng nhập số điện thoại' 
       });
     }
+
+    // Validate name
+    if (!finalCustomerInfo || !finalCustomerInfo.name) {
+      return res.status(400).json({ 
+        message: 'Vui lòng nhập họ tên' 
+      });
+    }
+    // ===== KẾT THÚC VALIDATION =====
 
     if (discountCode) {
       const discount = await Discount.findOne({ 
@@ -210,27 +225,6 @@ export const createBooking = async (req, res) => {
       success: false,
       message: 'Lỗi khi tạo booking',
       error: err.message 
-    });
-  }
-};
-
-export const getUserBookings = async (req, res) => {
-  try {
-    const userId = req.user._id;
-    
-    const bookings = await Booking.find({ user: userId })
-      .populate('vehicle', 'name images pricePerHour location')
-      .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      bookings
-    });
-  } catch (err) {
-    console.error('Error getting user bookings:', err);
-    res.status(500).json({ 
-      success: false,
-      message: 'Lỗi khi lấy danh sách booking' 
     });
   }
 };
@@ -548,10 +542,25 @@ export const completeBooking = async (req, res) => {
 export const myBooking = async (req, res) => {
   try {
     const bookings = await Booking.find({ user: req.user._id })
-      .populate('vehicle', 'name images pricePerDay')
+      .populate({
+        path: 'vehicle',
+        select: 'name images image location locationPickUp pricePerDay pricePerHour'
+      })
       .sort({ createdAt: -1 });
 
-    res.json(bookings);
+    const transformedBookings = bookings.map(booking => {
+      const bookingObj = booking.toObject();
+
+      if (bookingObj.vehicle) {
+        const vehicleImages = bookingObj.vehicle.images || 
+                             (bookingObj.vehicle.image ? [bookingObj.vehicle.image] : []);
+        bookingObj.vehicle.images = vehicleImages;
+      }
+      
+      return bookingObj;
+    });
+
+    res.json(transformedBookings);
   } catch (error) {
     console.error('Error getting user bookings:', error);
     res.status(500).json({ message: 'Lỗi server', error: error.message });

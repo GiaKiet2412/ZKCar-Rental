@@ -12,14 +12,12 @@ const bookingSchema = new mongoose.Schema({
     default: null
   },
   
-  // ✅ THÊM customerInfo - Lưu thông tin khách hàng từ form
   customerInfo: {
     name: { type: String },
     email: { type: String },
     phone: { type: String }
   },
   
-  // Legacy field cho guest (backward compatibility)
   guestInfo: {
     name: { type: String },
     email: { type: String },
@@ -35,11 +33,15 @@ const bookingSchema = new mongoose.Schema({
     default: 'self' 
   },
   deliveryLocation: { type: String },
+
+  pickupLocation: { type: String },
   
   originalAmount: { type: Number, required: true },
   discountCode: { type: String, uppercase: true },
   discountAmount: { type: Number, default: 0 },
   finalAmount: { type: Number, required: true },
+
+  totalPrice: { type: Number },
   
   insuranceFee: { type: Number, default: 0 },
   deliveryFee: { type: Number, default: 0 },
@@ -85,6 +87,22 @@ const bookingSchema = new mongoose.Schema({
   rating: { type: Number, min: 1, max: 5 },
   review: { type: String }
 }, { timestamps: true });
+
+bookingSchema.pre('save', function(next) {
+  // Calculate totalPrice if not set
+  if (!this.totalPrice) {
+    this.totalPrice = this.finalAmount + (this.depositAmount || 0);
+  }
+  
+  // Set pickupLocation if not set and pickupType is self
+  if (!this.pickupLocation && this.pickupType === 'self' && this.vehicle) {
+    // Will be populated from vehicle location
+  } else if (this.pickupType === 'delivery' && this.deliveryLocation) {
+    this.pickupLocation = this.deliveryLocation;
+  }
+  
+  next();
+});
 
 bookingSchema.index({ user: 1, createdAt: -1 });
 bookingSchema.index({ vehicle: 1, pickupDate: 1, returnDate: 1 });

@@ -8,8 +8,6 @@ const VerifyOTPPage = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-
-  // ✅ LẤY PHONE TỪ STATE
   const { email, name, phone, password } = location.state || {};
 
   const handleVerifyOtp = async () => {
@@ -29,18 +27,18 @@ const VerifyOTPPage = () => {
       const res = await API.post("/api/auth/register", { 
         name, 
         email, 
-        phone, // ✅ GỬI PHONE
+        phone,
         password 
       });
+      
+      const { token, user } = res.data;
 
-      // Save token
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data));
+      localStorage.setItem("token", token);
+      localStorage.setItem("userInfo", JSON.stringify({ ...user, token }));
 
       alert("Đăng ký thành công!");
       navigate("/login");
     } catch (error) {
-      console.error("OTP verification error:", error);
       setError(error.response?.data?.message || "Mã OTP không đúng hoặc đã hết hạn");
     } finally {
       setLoading(false);

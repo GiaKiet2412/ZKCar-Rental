@@ -74,9 +74,7 @@ export const createPaymentUrl = async (req, res) => {
   }
 };
 
-// ==========================================
 // HELPER: Cập nhật booking sau thanh toán
-// ==========================================
 const updateBookingAfterPayment = async (bookingId, transactionNo, bankCode) => {
   const booking = await Booking.findById(bookingId)
     .populate('vehicle')

@@ -32,10 +32,112 @@ class EmailService {
     return `${hours}:${minutes}, ${day}/${month}/${year}`;
   }
 
+    // GỬI MÃ TRACKING CHO GUEST
+  async sendTrackingCode(email, trackingCode, bookingsCount) {
+    if (!this.transporter) {
+      console.warn('Email service chưa được cấu hình.');
+      return { success: false, message: 'Email service not configured' };
+    }
+
+    try {
+      const mailOptions = {
+        from: `"KIETCAR - Thuê Xe Tự Lái" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'Mã xác thực tra cứu đơn hàng - KIETCAR',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f7fa; margin: 0; padding: 0; }
+              .container { max-width: 600px; margin: 30px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+              .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 40px 30px; text-align: center; }
+              .header h1 { margin: 0; font-size: 28px; }
+              .content { padding: 40px 30px; }
+              .tracking-code-box { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; border-radius: 12px; text-align: center; margin: 30px 0; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+              .tracking-code { font-size: 48px; font-weight: 900; letter-spacing: 8px; margin: 15px 0; font-family: 'Courier New', monospace; }
+              .info-box { background: #f0fdf4; border-left: 4px solid #10b981; padding: 20px; border-radius: 8px; margin: 20px 0; }
+              .info-box strong { color: #059669; display: block; margin-bottom: 10px; font-size: 16px; }
+              .info-box ul { margin: 10px 0; padding-left: 20px; }
+              .info-box li { margin: 8px 0; color: #374151; }
+              .warning-box { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 8px; margin: 20px 0; }
+              .footer { background: #f9fafb; padding: 30px; text-align: center; color: #6b7280; font-size: 13px; border-top: 1px solid #e5e7eb; }
+              .button { display: inline-block; background: #10b981; color: white; padding: 14px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; transition: background 0.3s; }
+              .button:hover { background: #059669; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>Mã Xác Thực Tra Cứu Đơn Hàng</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.95; font-size: 16px;">KIETCAR - Thuê Xe Điện Tự Lái</p>
+              </div>
+              
+              <div class="content">
+                <p style="font-size: 16px; color: #374151;">Xin chào,</p>
+                <p style="font-size: 16px; color: #374151;">Bạn vừa yêu cầu tra cứu đơn đặt xe. Chúng tôi tìm thấy <strong style="color: #10b981;">${bookingsCount} đơn hàng</strong> liên kết với email này.</p>
+
+                <div class="tracking-code-box">
+                  <p style="margin: 0; font-size: 16px; opacity: 0.9;">MÃ XÁC THỰC CỦA BẠN</p>
+                  <div class="tracking-code">${trackingCode}</div>
+                  <p style="margin: 15px 0 0 0; font-size: 14px; opacity: 0.85;">Mã có hiệu lực trong <strong>10 phút</strong></p>
+                </div>
+
+                <div class="info-box">
+                  <strong>Cách sử dụng mã xác thực:</strong>
+                  <ul>
+                    <li>Truy cập trang tra cứu đơn hàng</li>
+                    <li>Nhập email và mã xác thực <strong>${trackingCode}</strong></li>
+                    <li>Nhấn "Xác thực" để xem danh sách đơn hàng</li>
+                    <li>Chọn đơn hàng cần xem chi tiết</li>
+                  </ul>
+                </div>
+
+                <div style="text-align: center;">
+                  <a href="${process.env.CLIENT_URL}/guest-tracking" class="button">
+                    Tra Cứu Đơn Hàng Ngay
+                  </a>
+                </div>
+
+                <div class="warning-box">
+                  <p style="margin: 0; color: #92400e; font-weight: 600;">Lưu ý quan trọng:</p>
+                  <p style="margin: 8px 0 0 0; color: #92400e;">
+                    • Mã xác thực chỉ có hiệu lực trong 10 phút<br>
+                    • Không chia sẻ mã này với bất kỳ ai<br>
+                    • Nếu bạn không yêu cầu tra cứu, vui lòng bỏ qua email này
+                  </p>
+                </div>
+              </div>
+
+              <div class="footer">
+                <p><strong>KIETCAR - Thuê Xe Điện Tự Lái</strong></p>
+                <p>Hotline: 1900 xxxx | Email: support@kietcar.com</p>
+                <p>Website: ${process.env.CLIENT_URL}</p>
+                <p style="margin-top: 15px; font-size: 11px; color: #9ca3af;">
+                  Email này được gửi tự động. Vui lòng không trả lời email này.
+                </p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log(`Tracking code đã gửi đến ${email}. MessageId: ${info.messageId}`);
+      
+      return { success: true, messageId: info.messageId };
+    } catch (error) {
+      console.error('Lỗi khi gửi tracking code:', error);
+      throw error;
+    }
+  }
+  
   // Gửi email xác nhận booking
   async sendBookingConfirmation(booking, recipientEmail) {
     if (!this.transporter) {
-      console.warn('⚠️ Email service chưa được cấu hình. Bỏ qua gửi email.');
+      console.warn('Email service chưa được cấu hình. Bỏ qua gửi email.');
       return { success: false, message: 'Email service not configured' };
     }
 
@@ -58,7 +160,7 @@ class EmailService {
       const mailOptions = {
         from: `"KIETCAR - Thuê Xe Tự Lái" <${process.env.EMAIL_USER}>`,
         to: recipientEmail,
-        subject: `✅ Xác nhận đặt xe thành công - Mã ${bookingCode}`,
+        subject: `Xác nhận đặt xe thành công - Mã ${bookingCode}`,
         html: `
           <!DOCTYPE html>
           <html>
@@ -176,11 +278,11 @@ class EmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log(`✅ Email xác nhận đã gửi đến ${recipientEmail}. MessageId: ${info.messageId}`);
+      console.log(`Email xác nhận đã gửi đến ${recipientEmail}. MessageId: ${info.messageId}`);
       
       return { success: true, messageId: info.messageId };
     } catch (error) {
-      console.error('❌ Lỗi khi gửi email xác nhận:', error);
+      console.error('Lỗi khi gửi email xác nhận:', error);
       throw error;
     }
   }
@@ -188,7 +290,7 @@ class EmailService {
   // Gửi email thông báo hủy
   async sendCancellationEmail(booking, recipientEmail, reason = '') {
     if (!this.transporter) {
-      console.warn('⚠️ Email service chưa được cấu hình. Bỏ qua gửi email.');
+      console.warn('Email service chưa được cấu hình. Bỏ qua gửi email.');
       return { success: false, message: 'Email service not configured' };
     }
 
@@ -204,7 +306,7 @@ class EmailService {
       const mailOptions = {
         from: `"KIETCAR - Thuê Xe Tự Lái" <${process.env.EMAIL_USER}>`,
         to: recipientEmail,
-        subject: `❌ Đơn đặt xe đã bị hủy - Mã ${bookingCode}`,
+        subject: `Đơn đặt xe đã bị hủy - Mã ${bookingCode}`,
         html: `
           <!DOCTYPE html>
           <html>
@@ -261,11 +363,11 @@ class EmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log(`✅ Email hủy đơn đã gửi đến ${recipientEmail}`);
+      console.log(`Email hủy đơn đã gửi đến ${recipientEmail}`);
       
       return { success: true, messageId: info.messageId };
     } catch (error) {
-      console.error('❌ Lỗi khi gửi email hủy:', error);
+      console.error('Lỗi khi gửi email hủy:', error);
       throw error;
     }
   }

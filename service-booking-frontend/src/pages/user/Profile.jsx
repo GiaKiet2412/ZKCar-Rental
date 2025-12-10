@@ -41,6 +41,12 @@ const Profile = () => {
         });
 
         const data = response.data;
+
+        console.log('Profile data received:', {
+          totalRentals: data.totalRentals,
+          totalSpent: data.totalSpent
+        });
+
         const profileData = {
           name: data.name || '',
           email: data.email || '',
@@ -69,6 +75,7 @@ const Profile = () => {
         const response = await axios.get('http://localhost:5000/api/bookings/my-bookings', {
           headers: { Authorization: `Bearer ${token}` }
         });
+        console.log('Booking history received:', response.data);
         setBookingHistory(response.data);
       } catch (err) {
         console.error('Error fetching bookings:', err);
@@ -134,6 +141,7 @@ const Profile = () => {
     switch (status) {
       case 'completed': return 'bg-green-100 text-green-700';
       case 'confirmed': return 'bg-blue-100 text-blue-700';
+      case 'ongoing': return 'bg-purple-100 text-purple-700';
       case 'cancelled': return 'bg-red-100 text-red-700';
       case 'pending': return 'bg-yellow-100 text-yellow-700';
       default: return 'bg-gray-100 text-gray-700';
@@ -144,6 +152,7 @@ const Profile = () => {
     switch (status) {
       case 'completed': return 'Hoàn thành';
       case 'confirmed': return 'Đang thuê';
+      case 'ongoing': return 'Đang diễn ra';
       case 'cancelled': return 'Đã hủy';
       case 'pending': return 'Chờ xác nhận';
       default: return status;
@@ -151,7 +160,14 @@ const Profile = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('vi-VN');
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'N/A';
+      return date.toLocaleDateString('vi-VN');
+    } catch (error) {
+      return 'N/A';
+    }
   };
 
   if (loading && !userData.email) {
@@ -248,7 +264,7 @@ const Profile = () => {
                 <div>
                   <p className="text-sm text-gray-600">Xe đang thuê</p>
                   <p className="text-3xl font-bold text-gray-900 mt-1">
-                    {bookingHistory.filter(b => b.status === 'confirmed').length}
+                    {bookingHistory.filter(b => b.status === 'confirmed' || b.status === 'ongoing').length}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -417,68 +433,87 @@ const Profile = () => {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {bookingHistory.map(booking => (
-                        <div key={booking._id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-                          <div className="flex gap-4 flex-col sm:flex-row">
-                            <img
-                              src={booking.vehicle?.images?.[0] || 'https://via.placeholder.com/150'}
-                              alt={booking.vehicle?.name || 'Xe'}
-                              className="w-full sm:w-32 h-32 sm:h-24 object-cover rounded-lg"
-                            />
-                            <div className="flex-1">
-                              <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
-                                <div>
-                                  <h3 className="font-semibold text-gray-900">
-                                    {booking.vehicle?.name || 'N/A'}
-                                  </h3>
-                                  <p className="text-sm text-gray-600">Mã đơn: {booking._id.slice(-8)}</p>
-                                </div>
-                                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(booking.status)}`}>
-                                  {getStatusText(booking.status)}
-                                </span>
-                              </div>
-                              
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <p className="text-gray-600">Ngày thuê</p>
-                                  <p className="font-medium text-gray-900">{formatDate(booking.startDate)}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-600">Ngày trả</p>
-                                  <p className="font-medium text-gray-900">{formatDate(booking.endDate)}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-600">Địa điểm nhận xe</p>
-                                  <p className="font-medium text-gray-900">{booking.pickupLocation || 'N/A'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-600">Tổng tiền</p>
-                                  <p className="font-medium text-green-600">
-                                    {booking.totalPrice?.toLocaleString('vi-VN')}đ
-                                  </p>
-                                </div>
-                              </div>
+                      {bookingHistory.map(booking => {
+                        const vehicleImage = booking.vehicle?.images?.[0] 
+                          ? `http://localhost:5000${booking.vehicle.images[0]}`
+                          : 'https://via.placeholder.com/150';
 
-                              <div className="flex gap-2 mt-4 flex-wrap">
-                                <button
-                                  onClick={() => navigate(`/booking/${booking._id}`)}
-                                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm"
-                                >
-                                  Xem chi tiết
-                                </button>
-                                {booking.status === 'completed' && booking.vehicle && (
+                        let pickupLocation = 'N/A';
+    
+                        if (booking.pickupType === 'delivery') {
+                          pickupLocation = booking.deliveryLocation || 'N/A';
+                        } else if (booking.pickupType === 'self') {
+                          pickupLocation = booking.vehicle?.locationPickUp || booking.vehicle?.location || 'N/A';
+                        } else {
+                          pickupLocation = booking.vehicle?.locationPickUp || booking.vehicle?.location || 'N/A';
+                        }
+                        
+                        return (
+                          <div key={booking._id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                            <div className="flex gap-4 flex-col sm:flex-row">
+                              <img
+                                src={vehicleImage}
+                                alt={booking.vehicle?.name || 'Xe'}
+                                className="w-full sm:w-32 h-32 sm:h-24 object-cover rounded-lg"
+                                onError={(e) => {
+                                  e.target.src = 'https://via.placeholder.com/150';
+                                }}
+                              />
+                              <div className="flex-1">
+                                <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
+                                  <div>
+                                    <h3 className="font-semibold text-gray-900">
+                                      {booking.vehicle?.name || 'N/A'}
+                                    </h3>
+                                    <p className="text-sm text-gray-600">Mã đơn: {booking._id.slice(-8)}</p>
+                                  </div>
+                                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(booking.status)}`}>
+                                    {getStatusText(booking.status)}
+                                  </span>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <p className="text-gray-600">Ngày nhận xe</p>
+                                    <p className="font-medium text-gray-900">{formatDate(booking.pickupDate)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600">Ngày trả xe</p>
+                                    <p className="font-medium text-gray-900">{formatDate(booking.returnDate)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600">Địa điểm nhận xe</p>
+                                    <p className="font-medium text-gray-900">{pickupLocation}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600">Tổng tiền</p>
+                                    <p className="font-medium text-green-600">
+                                      {booking.finalAmount?.toLocaleString('vi-VN')}đ
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex gap-2 mt-4 flex-wrap">
                                   <button
-                                    onClick={() => navigate(`/vehicle/${booking.vehicle._id}`)}
-                                    className="px-4 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition text-sm"
+                                    onClick={() => navigate(`/booking/${booking._id}`)}
+                                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm"
                                   >
-                                    Thuê lại
+                                    Xem chi tiết
                                   </button>
-                                )}
+                                  {booking.status === 'completed' && booking.vehicle && (
+                                    <button
+                                      onClick={() => navigate(`/vehicle/${booking.vehicle._id}`)}
+                                      className="px-4 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition text-sm"
+                                    >
+                                      Thuê lại
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

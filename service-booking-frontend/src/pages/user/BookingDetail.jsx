@@ -1,3 +1,4 @@
+// src/pages/user/BookingDetail.jsx - UPDATED
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -32,10 +33,27 @@ const BookingDetail = () => {
   const fetchBooking = async () => {
     try {
       setLoading(true);
-      const res = await API.get(`/api/bookings/${bookingId}`);
+
+      // Check if guest is accessing (from sessionStorage)
+      const guestEmail = sessionStorage.getItem('guestEmail');
+      const guestPhone = sessionStorage.getItem('guestPhone');
+      
+      let url = `/api/bookings/${bookingId}`;
+      
+      // If guest credentials exist, use guest endpoint
+      if (guestEmail || guestPhone) {
+        const params = new URLSearchParams();
+        if (guestEmail) params.append('email', guestEmail);
+        if (guestPhone) params.append('phone', guestPhone);
+        url = `/api/guest-bookings/${bookingId}?${params.toString()}`;
+      }
+
+      const res = await API.get(url);
       
       if (res.data.success) {
         setBooking(res.data.booking);
+      } else if (res.data._id) {
+        setBooking(res.data);
       } else {
         setError('Không tìm thấy thông tin đặt xe');
       }
@@ -119,11 +137,8 @@ const BookingDetail = () => {
     ? `http://localhost:5000${vehicleImagePath}` 
     : '/no-image.png';
 
-  // Tính tổng tiền cần thanh toán
-  const depositAmount = booking.depositAmount || 3000000; // Default 3tr
-  const holdFee = booking.holdFee || 500000; // Default 500k
-  
-  // Tổng tiền phải trả (không bao gồm holdFee vì nó chỉ là phí giữ chỗ)
+  const depositAmount = booking.depositAmount || 3000000;
+  const holdFee = booking.holdFee || 500000;
   const grandTotal = booking.finalAmount + depositAmount;
 
   return (
@@ -167,9 +182,7 @@ const BookingDetail = () => {
                     src={vehicleImage}
                     alt={booking.vehicle.name}
                     className="w-40 h-32 object-cover rounded-xl border border-gray-200"
-                    onError={(e) => {
-                      e.target.src = '/no-image.png';
-                    }}
+                    onError={(e) => { e.target.src = '/no-image.png'; }}
                   />
                   <div className="flex-1">
                     <h3 className="text-lg font-bold text-gray-800 mb-2">
@@ -373,9 +386,9 @@ const BookingDetail = () => {
                         </span>
                       </div>
                       <div className="text-xs text-blue-600 space-y-1 pl-4">
-                        <p>• Phí thuê xe: {formatCurrencyVN(booking.finalAmount)}</p>
-                        <p>• Tiền thế chấp: {formatCurrencyVN(depositAmount)}</p>
-                        <p className="font-semibold pt-1">= Tổng: {formatCurrencyVN(grandTotal - holdFee)}</p>
+                        <p>Phí thuê xe: {formatCurrencyVN(booking.finalAmount)}</p>
+                        <p>Tiền thế chấp: {formatCurrencyVN(depositAmount)}</p>
+                        <p className="font-semibold pt-1">Tổng: {formatCurrencyVN(grandTotal - holdFee)}</p>
                       </div>
                     </div>
                   </div>

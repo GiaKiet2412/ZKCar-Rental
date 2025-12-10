@@ -11,11 +11,15 @@ export const AdminAuthProvider = ({ children }) => {
   const login = (data) => {
     setAdmin(data);
     localStorage.setItem('adminInfo', JSON.stringify(data));
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+    }
   };
 
   const logout = () => {
     setAdmin(null);
     localStorage.removeItem('adminInfo');
+    localStorage.removeItem('token');
   };
 
   return (

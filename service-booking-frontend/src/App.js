@@ -26,6 +26,7 @@ import PaymentSuccess from "./pages/user/PaymentSuccess";
 import PaymentFailed from "./pages/user/PaymentFailed";
 import PaymentReturn from "./pages/user/PaymentReturn";
 import Profile from "./pages/user/Profile";
+import GuestTrackingPage from "./pages/user/GuestTrackingPage";
 
 function App() {
   return (
@@ -51,6 +52,7 @@ function App() {
               <Route path="/vehicles" element={<SearchResult />} />
               <Route path="/vehicle/:id" element={<VehicleDetail />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/guest-tracking" element={<GuestTrackingPage />} />
               
               {/* BOOKING & PAYMENT ROUTES - QUAN TRỌNG: confirm phải đứng TRƯỚC :bookingId */}
               <Route path="/booking/confirm" element={<BookingConfirmation />} />

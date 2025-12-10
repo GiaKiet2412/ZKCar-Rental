@@ -7,6 +7,8 @@ const userSchema = new mongoose.Schema({
   phone: { type: String, trim: true },
   password: { type: String, required: true },
   role: { type: String, enum: ['user', 'admin'], default: 'user' },
+  address: { type: String, default: '' },
+  drivingLicense: { type: String, default: '' },
   
   // Tracking cho discount
   usedDiscountCodes: [{

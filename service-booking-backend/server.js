@@ -7,16 +7,12 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 
-//Vehicles
 import authRoutes from './routes/authRoutes.js';
 import vehicleRoutes from './routes/vehicleRoutes.js';
 import discountRoutes from './routes/discountRoutes.js';
-
-//Old
 import bookingRoutes from './routes/bookingRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
-
-
+import guestBookingRoutes from './routes/guestBookingRoutes.js';
 
 const app = express();
 const dirPath = path.join(path.resolve(), 'uploads/vehicles');
@@ -45,4 +41,5 @@ app.use('/api/discounts', discountRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/guest-bookings', guestBookingRoutes);
 app.use('/uploads', express.static('uploads'));

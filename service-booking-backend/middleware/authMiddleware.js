@@ -15,6 +15,7 @@ export const protect = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
     req.user = await User.findById(decoded.id).select('-password');
 
     if (!req.user) {
@@ -23,8 +24,8 @@ export const protect = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('Auth error:', error);
-    return res.status(401).json({ message: 'Token không hợp lệ' });
+    console.error('Auth error:', error.message);
+    return res.status(401).json({ message: 'Token không hợp lệ hoặc đã hết hạn' });
   }
 };
 
@@ -42,16 +43,14 @@ export const optionalAuth = async (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = await User.findById(decoded.id).select('-password');
       } catch (err) {
-        // Token không hợp lệ nhưng vẫn cho phép tiếp tục
         console.log('Invalid token in optionalAuth, continuing as guest');
       }
     }
 
-    // Không có token hoặc token không hợp lệ -> req.user = undefined -> guest user
     next();
   } catch (error) {
     console.error('OptionalAuth error:', error);
-    next(); // Vẫn cho phép tiếp tục
+    next();
   }
 };
 

@@ -179,7 +179,6 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// Lấy thông tin cá nhân
 router.get('/profile', protect, async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('-password');
@@ -188,13 +187,13 @@ router.get('/profile', protect, async (req, res) => {
       return res.status(404).json({ message: 'Người dùng không tồn tại' });
     }
 
-    // Calculate statistics from bookings
     const Booking = (await import('../models/Booking.js')).default;
-    const bookings = await Booking.find({ user: user._id });
-    const completedBookings = bookings.filter(b => b.status === 'completed');
+    const bookings = await Booking.find({ user: user._id })
+      .populate('vehicle', 'location');
     
+    const completedBookings = bookings.filter(b => b.status === 'completed');
     const totalSpent = completedBookings.reduce((sum, booking) => {
-      return sum + (booking.totalPrice || 0);
+      return sum + (booking.finalAmount || 0);
     }, 0);
 
     res.json({
@@ -224,7 +223,6 @@ router.put('/profile', protect, async (req, res) => {
       return res.status(404).json({ message: 'Người dùng không tồn tại' });
     }
 
-    // Update allowed fields only
     user.name = req.body.name || user.name;
     user.phone = req.body.phone || user.phone;
     user.address = req.body.address || user.address;
