@@ -4,7 +4,6 @@ import Booking from '../models/Booking.js';
 import fs from 'fs';
 import path from 'path';
 
-// Xóa file ảnh
 const deleteImageFile = (imagePath) => {
   if (imagePath && imagePath.startsWith('/uploads/vehicles/')) {
     const fullPath = path.join(path.resolve(), imagePath);
@@ -15,7 +14,6 @@ const deleteImageFile = (imagePath) => {
   }
 };
 
-// Tạo xe mới
 export const createVehicle = async (req, res) => {
   try {
     if (req.body.images && !Array.isArray(req.body.images)) {
@@ -43,30 +41,173 @@ export const createVehicle = async (req, res) => {
   }
 };
 
-// Lấy danh sách xe
+// Lấy danh sách xe với sắp xếp thông minh
 export const getVehicles = async (req, res) => {
   try {
-    const { brand, seats, fuelType, transmission, sort } = req.query;
+    const { 
+      brand, 
+      seats, 
+      fuelType, 
+      transmission, 
+      sort,
+      pickupDate,
+      returnDate,
+      location,
+      minPrice,
+      maxPrice
+    } = req.query;
+    
     const query = {};
 
     if (brand) query.brand = { $in: brand.split(",") };
     if (seats) query.seats = { $in: seats.split(",").map(Number) };
-    if (fuelType) query.fuelType = { $in: fuelType.split(",") };
-    if (transmission) query.transmission = { $in: transmission.split(",") };
+    if (fuelType) {
+      query.fuelType = { 
+        $in: fuelType.split(",").map(f => 
+          new RegExp(`^${f}$`, 'i')
+        ) 
+      };
+    }
+    if (transmission) {
+      query.transmission = { 
+        $in: transmission.split(",").map(t => 
+          new RegExp(`^${t}$`, 'i')
+        ) 
+      };
+    }
+    if (location) {
+      query.location = { $regex: location, $options: 'i' };
+    }
 
-    let vehicles = Vehicle.find(query);
+    // Price range filter
+    if (minPrice || maxPrice) {
+      query.pricePerHour = {};
+      if (minPrice) query.pricePerHour.$gte = Number(minPrice);
+      if (maxPrice) query.pricePerHour.$lte = Number(maxPrice);
+    }
 
-    if (sort === "asc") vehicles = vehicles.sort({ pricePerHour: 1 });
-    if (sort === "desc") vehicles = vehicles.sort({ pricePerHour: -1 });
+    let vehicles = await Vehicle.find(query).lean();
 
-    const result = await vehicles;
-    res.json(result);
+    // Nếu có pickupDate và returnDate, tính toán availability status
+    if (pickupDate && returnDate) {
+      const pickup = new Date(pickupDate);
+      const returnD = new Date(returnDate);
+
+      // Lấy tất cả bookings trong khoảng thời gian
+      const allBookings = await Booking.find({
+        vehicle: { $in: vehicles.map(v => v._id) },
+        status: { $in: ['pending', 'confirmed', 'ongoing'] },
+        paymentStatus: 'paid',
+        $or: [
+          { pickupDate: { $lte: returnD }, returnDate: { $gte: pickup } }
+        ]
+      }).lean();
+
+      // Map bookings theo vehicle
+      const bookingsByVehicle = {};
+      allBookings.forEach(booking => {
+        const vehicleId = booking.vehicle.toString();
+        if (!bookingsByVehicle[vehicleId]) {
+          bookingsByVehicle[vehicleId] = [];
+        }
+        bookingsByVehicle[vehicleId].push(booking);
+      });
+
+      // Tính toán status cho mỗi xe
+      vehicles = vehicles.map(vehicle => {
+        const vehicleId = vehicle._id.toString();
+        const vehicleBookings = bookingsByVehicle[vehicleId] || [];
+        
+        let availabilityStatus = 'available';
+        let nextAvailableTime = null;
+        let currentBookingEnd = null;
+
+        if (vehicleBookings.length > 0) {
+          // Kiểm tra xem có conflict không
+          const hasConflict = vehicleBookings.some(booking => {
+            const bookingStart = new Date(booking.pickupDate);
+            const bookingEnd = new Date(booking.returnDate);
+            return !(returnD <= bookingStart || pickup >= bookingEnd);
+          });
+
+          if (hasConflict) {
+            availabilityStatus = 'booked';
+            // Tìm thời gian trống tiếp theo
+            const sortedBookings = vehicleBookings.sort((a, b) => 
+              new Date(a.returnDate) - new Date(b.returnDate)
+            );
+            nextAvailableTime = new Date(sortedBookings[0].returnDate);
+          } else {
+            // Xe trống nhưng có booking gần
+            const upcomingBooking = vehicleBookings
+              .filter(b => new Date(b.pickupDate) > returnD)
+              .sort((a, b) => new Date(a.pickupDate) - new Date(b.pickupDate))[0];
+            
+            if (upcomingBooking) {
+              availabilityStatus = 'available_with_upcoming';
+              nextAvailableTime = new Date(upcomingBooking.pickupDate);
+            }
+
+            // Kiểm tra xe sắp trả (trong vòng 6 giờ)
+            const recentReturn = vehicleBookings
+              .filter(b => {
+                const returnTime = new Date(b.returnDate);
+                return returnTime < pickup && 
+                       (pickup - returnTime) / (1000 * 60 * 60) <= 6;
+              })
+              .sort((a, b) => new Date(b.returnDate) - new Date(a.returnDate))[0];
+            
+            if (recentReturn) {
+              availabilityStatus = 'soon_available';
+              currentBookingEnd = new Date(recentReturn.returnDate);
+            }
+          }
+        }
+
+        return {
+          ...vehicle,
+          availabilityStatus,
+          nextAvailableTime,
+          currentBookingEnd,
+          sortPriority: getSortPriority(availabilityStatus)
+        };
+      });
+
+      // Sắp xếp theo độ ưu tiên availability
+      vehicles.sort((a, b) => {
+        if (a.sortPriority !== b.sortPriority) {
+          return a.sortPriority - b.sortPriority;
+        }
+        // Nếu cùng priority, sắp xếp theo giá
+        return a.pricePerHour - b.pricePerHour;
+      });
+    }
+
+    // Áp dụng sắp xếp theo giá nếu được yêu cầu
+    if (sort === "asc") {
+      vehicles.sort((a, b) => a.pricePerHour - b.pricePerHour);
+    } else if (sort === "desc") {
+      vehicles.sort((a, b) => b.pricePerHour - a.pricePerHour);
+    }
+
+    res.json(vehicles);
   } catch (err) {
+    console.error('Lỗi lấy danh sách xe:', err);
     res.status(500).json({ message: "Không thể lấy danh sách xe", error: err.message });
   }
 };
 
-// Lấy chi tiết xe
+// Hàm xác định độ ưu tiên sắp xếp
+const getSortPriority = (status) => {
+  switch (status) {
+    case 'available': return 1;
+    case 'soon_available': return 2;
+    case 'available_with_upcoming': return 3;
+    case 'booked': return 4;
+    default: return 5;
+  }
+};
+
 export const getVehicleById = async (req, res) => {
   try {
     const vehicle = await Vehicle.findById(req.params.id);
@@ -77,7 +218,6 @@ export const getVehicleById = async (req, res) => {
   }
 };
 
-// Cập nhật xe
 export const updateVehicle = async (req, res) => {
   try {
     const vehicle = await Vehicle.findById(req.params.id);
@@ -112,13 +252,11 @@ export const updateVehicle = async (req, res) => {
   }
 };
 
-// Xóa xe + ảnh
 export const deleteVehicle = async (req, res) => {
   try {
     const vehicle = await Vehicle.findById(req.params.id);
     if (!vehicle) return res.status(404).json({ message: 'Không tìm thấy xe' });
 
-    // Xóa tất cả ảnh liên quan
     if (vehicle.images && vehicle.images.length > 0) {
       vehicle.images.forEach(deleteImageFile);
     }
@@ -130,17 +268,15 @@ export const deleteVehicle = async (req, res) => {
   }
 };
 
-//Lấy các khung giờ xe đã được đặt
 export const getBookedSlots = async (req, res) => {
   try {
     const { id } = req.params;
     const { startDate, endDate } = req.query;
 
-    // Tìm tất cả booking của xe trong khoảng thời gian
     const query = {
       vehicle: id,
-      status: { $in: ['pending', 'confirmed', 'ongoing'] }, // Chỉ lấy booking còn hiệu lực
-      paymentStatus: 'paid' // Chỉ lấy booking đã thanh toán
+      status: { $in: ['pending', 'confirmed', 'ongoing'] },
+      paymentStatus: 'paid'
     };
 
     if (startDate) {
@@ -154,7 +290,6 @@ export const getBookedSlots = async (req, res) => {
       .select('pickupDate returnDate status')
       .sort({ pickupDate: 1 });
 
-    // Format kết quả
     const bookedSlots = bookings.map(booking => ({
       start: booking.pickupDate,
       end: booking.returnDate,
@@ -174,7 +309,6 @@ export const getBookedSlots = async (req, res) => {
   }
 };
 
-//Kiểm tra xe có available trong khoảng thời gian không
 export const checkAvailability = async (req, res) => {
   try {
     const { id } = req.params;
@@ -190,23 +324,19 @@ export const checkAvailability = async (req, res) => {
     const pickup = new Date(pickupDate);
     const returnD = new Date(returnDate);
 
-    // Kiểm tra có booking nào trùng không
     const conflictingBooking = await Booking.findOne({
       vehicle: id,
       status: { $in: ['pending', 'confirmed', 'ongoing'] },
       paymentStatus: 'paid',
       $or: [
-        // Trường hợp 1: Pickup mới nằm trong booking cũ
         {
           pickupDate: { $lte: pickup },
           returnDate: { $gte: pickup }
         },
-        // Trường hợp 2: Return mới nằm trong booking cũ
         {
           pickupDate: { $lte: returnD },
           returnDate: { $gte: returnD }
         },
-        // Trường hợp 3: Booking mới bao trùm booking cũ
         {
           pickupDate: { $gte: pickup },
           returnDate: { $lte: returnD }
@@ -237,5 +367,87 @@ export const checkAvailability = async (req, res) => {
       success: false,
       message: 'Lỗi khi kiểm tra tình trạng xe'
     });
+  }
+};
+
+// API mới: Lấy danh sách hãng xe từ database
+export const getBrands = async (req, res) => {
+  try {
+    const brands = await Brand.find().sort({ name: 1 }).lean();
+    res.json(brands);
+  } catch (err) {
+    console.error('Lỗi lấy danh sách hãng:', err);
+    res.status(500).json({ message: "Không thể lấy danh sách hãng xe", error: err.message });
+  }
+};
+
+// API mới: Lấy filter options từ database
+export const getFilterOptions = async (req, res) => {
+  try {
+    const [brands, seats, transmissions, fuelTypes] = await Promise.all([
+      Vehicle.distinct('brand'),
+      Vehicle.distinct('seats'),
+      Vehicle.distinct('transmission'),
+      Vehicle.distinct('fuelType')
+    ]);
+
+    // Chuẩn hóa dữ liệu: loại bỏ trùng lặp case-insensitive
+    const normalizeAndUnique = (arr) => {
+      const normalized = {};
+      arr.forEach(item => {
+        if (item) {
+          const key = item.toLowerCase();
+          // Lưu version capitalize
+          if (!normalized[key]) {
+            normalized[key] = item.charAt(0).toUpperCase() + item.slice(1).toLowerCase();
+          }
+        }
+      });
+      return Object.values(normalized).sort();
+    };
+
+    res.json({
+      brands: brands.filter(Boolean).sort(),
+      seats: seats.filter(Boolean).sort((a, b) => a - b),
+      transmissions: normalizeAndUnique(transmissions),
+      fuelTypes: normalizeAndUnique(fuelTypes)
+    });
+  } catch (err) {
+    console.error('Lỗi lấy filter options:', err);
+    res.status(500).json({ message: "Không thể lấy filter options", error: err.message });
+  }
+};
+
+// API mới: Lấy price range
+export const getPriceRange = async (req, res) => {
+  try {
+    const result = await Vehicle.aggregate([
+      { $match: { isAvailable: true } },
+      {
+        $group: {
+          _id: null,
+          minPrice: { $min: "$pricePerHour" },
+          maxPrice: { $max: "$pricePerHour" },
+          avgPrice: { $avg: "$pricePerHour" }
+        }
+      }
+    ]);
+
+    if (result.length === 0) {
+      return res.json({
+        minPrice: 0,
+        maxPrice: 1000000,
+        avgPrice: 300000
+      });
+    }
+
+    res.json({
+      minPrice: Math.floor(result[0].minPrice / 10000) * 10000, // Làm tròn xuống 10k
+      maxPrice: Math.ceil(result[0].maxPrice / 10000) * 10000, // Làm tròn lên 10k
+      avgPrice: Math.round(result[0].avgPrice / 10000) * 10000
+    });
+  } catch (err) {
+    console.error('Lỗi lấy price range:', err);
+    res.status(500).json({ message: "Không thể lấy price range", error: err.message });
   }
 };

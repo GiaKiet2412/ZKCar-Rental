@@ -88,11 +88,12 @@ const BookingConfirmation = () => {
         deliveryFee: deliveryFee,
         VAT: VATRounded,
         discountCode: discountCode || null,
-        customerInfo: {  // THAY ĐỔI: dùng customerInfo
+        customerInfo: {  // CHỈ GỬI customerInfo
           name: customerInfo.name,
           phone: customerInfo.phone,
           email: customerInfo.email || null
         },
+        // KHÔNG GỬI guestInfo
         notes: `Gói bảo hiểm: ${selectedInsurance}${selfReturn ? ', Tự trả xe' : ''}`
       };
 

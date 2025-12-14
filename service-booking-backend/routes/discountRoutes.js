@@ -8,19 +8,20 @@ import {
   toggleDiscount,
   deleteDiscount
 } from '../controllers/discountController.js';
-import { protect, checkRole } from '../middleware/authMiddleware.js';
+import { protect, optionalAuth, checkRole } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Public/User routes - Không cần auth cho guest
-router.get('/available', getAvailableDiscounts); // GET /api/discounts/available
-router.post('/validate', validateDiscount); // POST /api/discounts/validate
+// CRITICAL FIX: Public/User routes với optionalAuth
+// Cho phép cả guest (req.user = undefined) và logged user (req.user có data)
+router.get('/available', optionalAuth, getAvailableDiscounts); 
+router.post('/validate', optionalAuth, validateDiscount);
 
 // Admin routes
-router.get('/', protect, checkRole('admin'), getAllDiscounts); // GET /api/discounts
-router.post('/', protect, checkRole('admin'), createDiscount); // POST /api/discounts
-router.put('/:id', protect, checkRole('admin'), updateDiscount); // PUT /api/discounts/:id
-router.patch('/:id/toggle', protect, checkRole('admin'), toggleDiscount); // PATCH /api/discounts/:id/toggle
-router.delete('/:id', protect, checkRole('admin'), deleteDiscount); // DELETE /api/discounts/:id
+router.get('/', protect, checkRole('admin'), getAllDiscounts);
+router.post('/', protect, checkRole('admin'), createDiscount);
+router.put('/:id', protect, checkRole('admin'), updateDiscount);
+router.patch('/:id/toggle', protect, checkRole('admin'), toggleDiscount);
+router.delete('/:id', protect, checkRole('admin'), deleteDiscount);
 
 export default router;

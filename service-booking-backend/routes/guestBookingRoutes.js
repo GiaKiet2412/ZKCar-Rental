@@ -1,19 +1,21 @@
 import express from 'express';
-import { 
-  sendTrackingCode, 
-  verifyTrackingCode,
-  getGuestBookingDetail 
-} from '../controllers/guestBookingController.js';
+import { sendTrackingCode, verifyTrackingCode, getGuestBookingDetail,} from '../controllers/guestBookingController.js';
+import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
 
-// POST /api/guest-bookings/request-tracking - Yêu cầu mã tracking
-router.post('/request-tracking', sendTrackingCode);
+const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 5, // Tối đa 5 request
+  message: { 
+    message: 'Quá nhiều yêu cầu từ IP này. Vui lòng thử lại sau 15 phút.' 
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-// POST /api/guest-bookings/verify-tracking - Xác thực mã tracking và lấy danh sách bookings
+router.post('/request-tracking', otpLimiter, sendTrackingCode);
 router.post('/verify-tracking', verifyTrackingCode);
-
-// GET /api/guest-bookings/:bookingId - Lấy chi tiết booking (cần email/phone để xác thực)
 router.get('/:bookingId', getGuestBookingDetail);
 
 export default router;

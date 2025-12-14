@@ -4,7 +4,7 @@ import User from '../models/User.js';
 import Vehicle from '../models/Vehicle.js';
 import emailService from '../services/emailService.js';
 
-// Tạo booking mới
+// Tạo booking mới với FULL VALIDATION
 export const createBooking = async (req, res) => {
   try {
     const { 
@@ -23,11 +23,13 @@ export const createBooking = async (req, res) => {
       notes
     } = req.body;
 
+    // ===== VALIDATE VEHICLE =====
     const vehicle = await Vehicle.findById(vehicleId);
     if (!vehicle) {
       return res.status(404).json({ message: 'Không tìm thấy xe' });
     }
 
+    // ===== VALIDATE TIME & AVAILABILITY =====
     const pickup = new Date(pickupDate);
     const returnD = new Date(returnDate);
     const pickupWithBuffer = new Date(pickup.getTime() - 60 * 60 * 1000);
@@ -68,6 +70,7 @@ export const createBooking = async (req, res) => {
     let finalDiscountAmount = 0;
     let discountInfo = null;
 
+    // ===== PREPARE CUSTOMER INFO =====
     let finalCustomerInfo = customerInfo || guestInfo;
     
     if (userId) {
@@ -81,28 +84,26 @@ export const createBooking = async (req, res) => {
       }
     }
 
-    // ===== VALIDATION BỔ SUNG: ĐẢM BẢO EMAIL LUÔN CÓ =====
+    // ===== VALIDATE REQUIRED FIELDS =====
     if (!finalCustomerInfo || !finalCustomerInfo.email || !finalCustomerInfo.email.includes('@')) {
       return res.status(400).json({ 
         message: 'Vui lòng nhập địa chỉ email hợp lệ. Email cần thiết để nhận thông tin đặt xe và tra cứu đơn hàng.' 
       });
     }
 
-    // Validate phone
     if (!finalCustomerInfo || !finalCustomerInfo.phone) {
       return res.status(400).json({ 
         message: 'Vui lòng nhập số điện thoại' 
       });
     }
 
-    // Validate name
     if (!finalCustomerInfo || !finalCustomerInfo.name) {
       return res.status(400).json({ 
         message: 'Vui lòng nhập họ tên' 
       });
     }
-    // ===== KẾT THÚC VALIDATION =====
 
+    // ===== COMPREHENSIVE DISCOUNT VALIDATION =====
     if (discountCode) {
       const discount = await Discount.findOne({ 
         code: discountCode.toUpperCase(),
@@ -110,62 +111,125 @@ export const createBooking = async (req, res) => {
       });
 
       if (!discount) {
-        return res.status(400).json({ message: 'Mã giảm giá không hợp lệ' });
-      }
-
-      const now = new Date();
-      if (now < discount.validFrom || now > discount.validTo) {
-        return res.status(400).json({ message: 'Mã giảm giá đã hết hạn' });
-      }
-
-      if (discount.quantity <= 0) {
-        return res.status(400).json({ message: 'Mã giảm giá đã hết lượt sử dụng' });
-      }
-
-      if (originalAmount < discount.minOrderAmount) {
         return res.status(400).json({ 
-          message: `Đơn hàng phải từ ${discount.minOrderAmount.toLocaleString()}đ trở lên` 
+          success: false,
+          message: 'Mã giảm giá không tồn tại hoặc đã bị vô hiệu hóa' 
         });
       }
 
-      if (userId) {
-        const user = await User.findById(userId);
-        
-        if (discount.forNewUsersOnly) {
-          if (user.hasUsedDiscount(discountCode)) {
-            return res.status(400).json({ message: 'Bạn đã sử dụng mã này rồi' });
-          }
-          
-          if (user.completedBookings > 0) {
-            return res.status(400).json({ message: 'Mã chỉ dành cho khách hàng mới' });
-          }
-        }
+      const now = new Date();
 
-        if (discount.forNthOrder) {
-          const bookingCount = await Booking.countDocuments({ 
-            user: userId,
-            status: { $in: ['completed', 'confirmed', 'ongoing'] }
+      // 1. Validate thời gian hiệu lực
+      if (now < discount.validFrom || now > discount.validTo) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Mã giảm giá đã hết hạn hoặc chưa có hiệu lực' 
+        });
+      }
+
+      // 2. Validate số lượng
+      if (discount.quantity <= 0) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Mã giảm giá đã hết lượt sử dụng' 
+        });
+      }
+
+      // 3. Validate giá trị đơn hàng tối thiểu
+      if (originalAmount < discount.minOrderAmount) {
+        return res.status(400).json({ 
+          success: false,
+          message: `Đơn hàng phải từ ${discount.minOrderAmount.toLocaleString()}đ trở lên để sử dụng mã này` 
+        });
+      }
+
+      // 4. Validate thời gian thuê xe (nếu có giới hạn)
+      if (discount.rentalStart || discount.rentalEnd) {
+        const pickupCheck = new Date(pickupDate);
+        const returnCheck = new Date(returnDate);
+        
+        if (discount.rentalStart && pickupCheck < discount.rentalStart) {
+          return res.status(400).json({ 
+            success: false,
+            message: 'Chuyến đi phải bắt đầu sau ngày ' + discount.rentalStart.toLocaleDateString('vi-VN')
           });
-          
-          if (bookingCount + 1 !== discount.forNthOrder) {
-            return res.status(400).json({ 
-              message: `Mã chỉ áp dụng cho lần thuê thứ ${discount.forNthOrder}` 
-            });
-          }
+        }
+        
+        if (discount.rentalEnd && returnCheck > discount.rentalEnd) {
+          return res.status(400).json({ 
+            success: false,
+            message: 'Chuyến đi phải kết thúc trước ngày ' + discount.rentalEnd.toLocaleDateString('vi-VN')
+          });
         }
       }
 
+      // 5. Validate điều kiện đặc biệt (chỉ với user đã đăng nhập)
+      if (userId) {
+        const user = await User.findById(userId);
+        const bookingCount = await Booking.countDocuments({ 
+          user: userId,
+          status: { $in: ['completed', 'confirmed', 'ongoing'] },
+          paymentStatus: 'paid'
+        });
+
+        // 5a. Kiểm tra forNewUsersOnly
+        if (discount.forNewUsersOnly) {
+          if (bookingCount > 0) {
+            return res.status(400).json({ 
+              success: false,
+              message: 'Mã này chỉ dành cho khách hàng đặt xe lần đầu' 
+            });
+          }
+
+          // Kiểm tra đã sử dụng mã này chưa
+          const usedBefore = await Booking.findOne({
+            user: userId,
+            discountCode: discount.code,
+            paymentStatus: 'paid'
+          });
+          
+          if (usedBefore) {
+            return res.status(400).json({ 
+              success: false,
+              message: 'Bạn đã sử dụng mã này rồi' 
+            });
+          }
+        }
+
+        // 5b. Kiểm tra forNthOrder
+        if (discount.forNthOrder) {
+          const nextOrderNumber = bookingCount + 1;
+          if (nextOrderNumber !== discount.forNthOrder) {
+            return res.status(400).json({ 
+              success: false,
+              message: `Mã này chỉ áp dụng cho lần thuê thứ ${discount.forNthOrder}. Đây là lần thuê thứ ${nextOrderNumber} của bạn.` 
+            });
+          }
+        }
+      } else {
+        // Guest user không thể dùng mã có điều kiện đặc biệt
+        if (discount.forNewUsersOnly || discount.forNthOrder) {
+          return res.status(400).json({
+            success: false,
+            message: 'Vui lòng đăng nhập để sử dụng mã giảm giá này'
+          });
+        }
+      }
+
+      // 6. Validate yêu cầu đặt trước
       if (discount.requirePreBookingDays > 0) {
         const daysInAdvance = Math.floor(
           (new Date(pickupDate) - now) / (1000 * 60 * 60 * 24)
         );
         if (daysInAdvance < discount.requirePreBookingDays) {
           return res.status(400).json({ 
-            message: `Phải đặt trước ít nhất ${discount.requirePreBookingDays} ngày` 
+            success: false,
+            message: `Phải đặt trước ít nhất ${discount.requirePreBookingDays} ngày để sử dụng mã này` 
           });
         }
       }
 
+      // 7. Tính toán số tiền giảm
       if (discount.discountType === 'percent') {
         finalDiscountAmount = (originalAmount * discount.discountValue) / 100;
         if (discount.maxDiscountAmount > 0) {
@@ -177,6 +241,10 @@ export const createBooking = async (req, res) => {
 
       finalDiscountAmount = Math.round(finalDiscountAmount);
 
+      // 8. Giảm số lượng mã
+      discount.quantity -= 1;
+      await discount.save();
+
       discountInfo = {
         code: discount.code,
         type: discount.discountType,
@@ -185,10 +253,12 @@ export const createBooking = async (req, res) => {
       };
     }
 
+    // ===== CALCULATE FINAL AMOUNT =====
     const finalAmount = Math.round(
       originalAmount + (insuranceFee || 0) + (deliveryFee || 0) + (VAT || 0) - finalDiscountAmount
     );
 
+    // ===== CREATE BOOKING =====
     const booking = new Booking({
       vehicle: vehicleId,
       user: userId || null,
@@ -212,6 +282,15 @@ export const createBooking = async (req, res) => {
 
     await booking.save();
 
+    // ===== TRACK DISCOUNT USAGE (nếu user đã đăng nhập) =====
+    if (userId && discountCode) {
+      const user = await User.findById(userId);
+      if (user) {
+        user.addUsedDiscount(discountCode);
+        await user.save();
+      }
+    }
+
     res.status(201).json({ 
       success: true,
       message: 'Tạo booking thành công', 
@@ -221,6 +300,19 @@ export const createBooking = async (req, res) => {
 
   } catch (err) {
     console.error('Error creating booking:', err);
+    
+    // Rollback discount quantity nếu có lỗi
+    if (req.body.discountCode) {
+      try {
+        await Discount.findOneAndUpdate(
+          { code: req.body.discountCode.toUpperCase() },
+          { $inc: { quantity: 1 } }
+        );
+      } catch (rollbackErr) {
+        console.error('Error rolling back discount:', rollbackErr);
+      }
+    }
+    
     res.status(500).json({ 
       success: false,
       message: 'Lỗi khi tạo booking',
@@ -229,6 +321,7 @@ export const createBooking = async (req, res) => {
   }
 };
 
+// Các controller khác giữ nguyên...
 export const getBookingById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -441,7 +534,7 @@ export const cancelBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user._id;
-    const { reason } = req.body; // Có thể nhận lý do hủy từ client
+    const { reason } = req.body;
 
     const booking = await Booking.findById(id)
       .populate('vehicle')
@@ -464,7 +557,7 @@ export const cancelBooking = async (req, res) => {
     booking.status = 'cancelled';
     await booking.save();
 
-    // Hoàn lại discount
+    // Hoàn lại discount quantity
     if (booking.discountCode && booking.paymentStatus === 'paid') {
       await Discount.findOneAndUpdate(
         { code: booking.discountCode },
@@ -472,7 +565,7 @@ export const cancelBooking = async (req, res) => {
       );
     }
 
-    // GỬI EMAIL THÔNG BÁO HỦY
+    // Gửi email thông báo hủy
     try {
       const customerEmail = 
         booking.customerInfo?.email || 

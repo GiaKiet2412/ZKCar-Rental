@@ -7,7 +7,52 @@ const generateTrackingCode = () => {
 };
 
 // Store tracking codes in memory (in production, use Redis)
-const trackingCodes = new Map(); // { email: { code, expiresAt, bookingsFound } }
+const trackingCodes = new Map();
+
+// Helper function to normalize input
+const normalizeInput = (input) => {
+  if (!input) return '';
+  return input.trim().toLowerCase().replace(/\s+/g, '');
+};
+
+// Create unique key based on WHAT USER ACTUALLY ENTERED
+const createTrackingKey = (email, phone) => {
+  const normalizedEmail = normalizeInput(email);
+  const normalizedPhone = normalizeInput(phone);
+  
+  // Use only what was provided to create the key
+  if (normalizedEmail && normalizedPhone) {
+    return `both:${normalizedEmail}:${normalizedPhone}`;
+  } else if (normalizedEmail) {
+    return `email:${normalizedEmail}`;
+  } else if (normalizedPhone) {
+    return `phone:${normalizedPhone}`;
+  }
+  return '';
+};
+
+// Helper function to build search query
+const buildSearchQuery = (email, phone) => {
+  const orConditions = [];
+  
+  if (email) {
+    const normalizedEmail = normalizeInput(email);
+    orConditions.push(
+      { 'customerInfo.email': { $regex: new RegExp(`^${normalizedEmail}$`, 'i') } },
+      { 'guestInfo.email': { $regex: new RegExp(`^${normalizedEmail}$`, 'i') } }
+    );
+  }
+  
+  if (phone) {
+    const normalizedPhone = normalizeInput(phone);
+    orConditions.push(
+      { 'customerInfo.phone': normalizedPhone },
+      { 'guestInfo.phone': normalizedPhone }
+    );
+  }
+  
+  return orConditions.length > 0 ? { $or: orConditions } : {};
+};
 
 export const sendTrackingCode = async (req, res) => {
   try {
@@ -19,20 +64,21 @@ export const sendTrackingCode = async (req, res) => {
       });
     }
 
-    // Tìm booking theo email hoặc phone
-    const query = {};
-    if (email) {
-      query.$or = [
-        { 'customerInfo.email': email },
-        { 'guestInfo.email': email }
-      ];
+    if (email && !validateEmail(email)) {
+      return res.status(400).json({ message: 'Email không hợp lệ' });
     }
-    if (phone) {
-      if (!query.$or) query.$or = [];
-      query.$or.push(
-        { 'customerInfo.phone': phone },
-        { 'guestInfo.phone': phone }
-      );
+
+    if (phone && !validatePhone(phone)) {
+      return res.status(400).json({ message: 'Số điện thoại không hợp lệ (10 chữ số, bắt đầu bằng 0)' });
+    }
+
+    // Build search query
+    const query = buildSearchQuery(email, phone);
+    
+    if (!query.$or || query.$or.length === 0) {
+      return res.status(400).json({ 
+        message: 'Thông tin không hợp lệ' 
+      });
     }
 
     const bookings = await Booking.find(query)
@@ -49,7 +95,6 @@ export const sendTrackingCode = async (req, res) => {
     // Lấy email từ booking nếu user chỉ nhập phone
     let recipientEmail = email;
     if (!recipientEmail && phone) {
-      // Tìm email từ bookings
       for (const booking of bookings) {
         const foundEmail = booking.customerInfo?.email || booking.guestInfo?.email;
         if (foundEmail && foundEmail.includes('@')) {
@@ -69,20 +114,39 @@ export const sendTrackingCode = async (req, res) => {
     const trackingCode = generateTrackingCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 phút
 
-    // Lưu tracking code vào memory
-    const key = email || phone;
-    trackingCodes.set(key, {
-      code: trackingCode,
-      email: recipientEmail,
-      phone: phone || '',
-      expiresAt,
-      bookingsFound: bookings.length
-    });
+    // Create unique key based on what user entered
+    const trackingKey = createTrackingKey(email, phone);
+    
+    if (!trackingKey) {
+      return res.status(400).json({ 
+        message: 'Thông tin không hợp lệ' 
+      });
+    }
+    
+    // Delete old code if exists
+    if (trackingCodes.has(trackingKey)) {
+      const oldData = trackingCodes.get(trackingKey);
+      if (oldData.timeoutId) {
+        clearTimeout(oldData.timeoutId);
+      }
+      trackingCodes.delete(trackingKey);
+    }
 
-    // Auto cleanup expired codes
-    setTimeout(() => {
-      trackingCodes.delete(key);
+    // Auto cleanup after expiry
+    const timeoutId = setTimeout(() => {
+      trackingCodes.delete(trackingKey);
     }, 10 * 60 * 1000);
+
+    // Save new tracking code
+    trackingCodes.set(trackingKey, {
+      code: trackingCode,
+      recipientEmail: recipientEmail,
+      searchEmail: email || null,
+      searchPhone: phone || null,
+      expiresAt,
+      bookingsFound: bookings.length,
+      timeoutId
+    });
 
     // Gửi email
     await emailService.sendTrackingCode(recipientEmail, trackingCode, bookings.length);
@@ -90,7 +154,7 @@ export const sendTrackingCode = async (req, res) => {
     res.json({
       success: true,
       message: `Mã xác thực đã được gửi đến email ${recipientEmail}`,
-      recipientEmail, // Trả về email để frontend biết
+      recipientEmail,
       expiresIn: 600,
       bookingsFound: bookings.length
     });
@@ -116,9 +180,14 @@ export const verifyTrackingCode = async (req, res) => {
       return res.status(400).json({ message: 'Vui lòng cung cấp email hoặc số điện thoại' });
     }
 
-    // Verify tracking code from memory
-    const key = email || phone;
-    const storedData = trackingCodes.get(key);
+    // Create same key as when sending (must match exactly)
+    const trackingKey = createTrackingKey(email, phone);
+    
+    if (!trackingKey) {
+      return res.status(400).json({ message: 'Thông tin không hợp lệ' });
+    }
+
+    const storedData = trackingCodes.get(trackingKey);
 
     if (!storedData) {
       return res.status(400).json({ 
@@ -127,7 +196,11 @@ export const verifyTrackingCode = async (req, res) => {
     }
 
     if (storedData.expiresAt < new Date()) {
-      trackingCodes.delete(key);
+      // Clean up expired code
+      if (storedData.timeoutId) {
+        clearTimeout(storedData.timeoutId);
+      }
+      trackingCodes.delete(trackingKey);
       return res.status(400).json({ 
         message: 'Mã xác thực đã hết hạn. Vui lòng yêu cầu mã mới.' 
       });
@@ -139,24 +212,8 @@ export const verifyTrackingCode = async (req, res) => {
       });
     }
 
-    // Valid code - fetch bookings
-    const query = {};
-    const searchEmail = email || storedData.email;
-    const searchPhone = phone || storedData.phone;
-
-    if (searchEmail) {
-      query.$or = [
-        { 'customerInfo.email': searchEmail },
-        { 'guestInfo.email': searchEmail }
-      ];
-    }
-    if (searchPhone) {
-      if (!query.$or) query.$or = [];
-      query.$or.push(
-        { 'customerInfo.phone': searchPhone },
-        { 'guestInfo.phone': searchPhone }
-      );
-    }
+    // Valid code - use stored search criteria
+    const query = buildSearchQuery(storedData.searchEmail, storedData.searchPhone);
 
     const bookings = await Booking.find(query)
       .populate('vehicle', 'name images location locationPickUp pricePerHour')
@@ -177,14 +234,21 @@ export const verifyTrackingCode = async (req, res) => {
       return bookingObj;
     });
 
-    // Keep tracking code valid for this session (don't delete yet)
-    // User might want to go back and see the list again
+    // Extend expiry for session browsing (30 minutes)
+    storedData.expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    
+    if (storedData.timeoutId) {
+      clearTimeout(storedData.timeoutId);
+    }
+    storedData.timeoutId = setTimeout(() => {
+      trackingCodes.delete(trackingKey);
+    }, 30 * 60 * 1000);
 
     res.json({
       success: true,
       bookings: transformedBookings,
-      verifiedEmail: searchEmail,
-      verifiedPhone: searchPhone,
+      verifiedEmail: storedData.searchEmail,
+      verifiedPhone: storedData.searchPhone,
       message: 'Lấy danh sách đơn hàng thành công'
     });
 
@@ -209,23 +273,10 @@ export const getGuestBookingDetail = async (req, res) => {
     }
 
     const query = { _id: bookingId };
+    const searchQuery = buildSearchQuery(email, phone);
     
-    const orConditions = [];
-    if (email) {
-      orConditions.push(
-        { 'customerInfo.email': email },
-        { 'guestInfo.email': email }
-      );
-    }
-    if (phone) {
-      orConditions.push(
-        { 'customerInfo.phone': phone },
-        { 'guestInfo.phone': phone }
-      );
-    }
-    
-    if (orConditions.length > 0) {
-      query.$or = orConditions;
+    if (searchQuery.$or) {
+      query.$or = searchQuery.$or;
     }
 
     const booking = await Booking.findOne(query)
@@ -256,9 +307,14 @@ export const getGuestBookingDetail = async (req, res) => {
 // Cleanup expired tracking codes periodically
 setInterval(() => {
   const now = new Date();
+  let cleaned = 0;
   for (const [key, value] of trackingCodes.entries()) {
     if (value.expiresAt < now) {
+      if (value.timeoutId) {
+        clearTimeout(value.timeoutId);
+      }
       trackingCodes.delete(key);
+      cleaned++;
     }
   }
 }, 60 * 1000); // Check every minute

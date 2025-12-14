@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { X, Tag, Clock, AlertCircle } from "lucide-react";
+import { X, Tag, Clock, AlertCircle, LogIn } from "lucide-react";
 import API from "../../api/axios";
 import { formatCurrencyVN } from "../../utils/formatUtils";
+import { useUserAuth } from "../../context/UserAuthContext";
 
 const DiscountModal = ({ onClose, onSelect, totalAmount, pickupDate, returnDate }) => {
+  const authContext = useUserAuth();
+  const user = authContext?.user || null;
   const [discounts, setDiscounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCode, setSelectedCode] = useState(null);
@@ -16,7 +19,6 @@ const DiscountModal = ({ onClose, onSelect, totalAmount, pickupDate, returnDate 
   const fetchDiscounts = async () => {
     try {
       setLoading(true);
-      // FIXED: Đổi từ /api/discounts sang /api/discounts/available
       const res = await API.get("/api/discounts/available");
       setDiscounts(res.data || []);
     } catch (err) {
@@ -28,8 +30,14 @@ const DiscountModal = ({ onClose, onSelect, totalAmount, pickupDate, returnDate 
   };
 
   const handleSelect = async (discount) => {
+    // Check nếu là guest và mã yêu cầu đăng nhập
+    if (!user && (discount.forNewUsersOnly || discount.forNthOrder)) {
+      setError("Vui lòng đăng nhập để sử dụng mã giảm giá này");
+      setTimeout(() => setError(""), 3000);
+      return;
+    }
+
     try {
-      // Validate mã trước khi áp dụng
       const res = await API.post("/api/discounts/validate", {
         code: discount.code,
         totalAmount: totalAmount || 0,
@@ -39,15 +47,12 @@ const DiscountModal = ({ onClose, onSelect, totalAmount, pickupDate, returnDate 
 
       if (res.data.valid) {
         setSelectedCode(discount.code);
-        // Trả về discount object với discountAmount đã tính
         onSelect(res.data.discount);
         onClose();
       }
     } catch (err) {
       const message = err.response?.data?.message || "Không thể áp dụng mã này";
       setError(message);
-      
-      // Clear error sau 3s
       setTimeout(() => setError(""), 3000);
     }
   };
@@ -70,6 +75,11 @@ const DiscountModal = ({ onClose, onSelect, totalAmount, pickupDate, returnDate 
     return `Giảm ${formatCurrencyVN(discount.discountValue)}`;
   };
 
+  // Check nếu discount yêu cầu đăng nhập
+  const requiresLogin = (discount) => {
+    return !user && (discount.forNewUsersOnly || discount.forNthOrder);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/40 z-[200] flex items-center justify-center px-3">
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden animate-fadeIn">
@@ -83,6 +93,17 @@ const DiscountModal = ({ onClose, onSelect, totalAmount, pickupDate, returnDate 
             <X size={22} />
           </button>
         </div>
+
+        {/* Guest user notice */}
+        {!user && (
+          <div className="mx-4 mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
+            <LogIn className="text-blue-600 flex-shrink-0 mt-0.5" size={18} />
+            <div className="text-sm text-blue-700">
+              <p className="font-medium mb-1">Chưa đăng nhập?</p>
+              <p>Một số mã giảm giá yêu cầu đăng nhập để sử dụng. Đăng nhập để xem tất cả ưu đãi!</p>
+            </div>
+          </div>
+        )}
 
         {/* Error message */}
         {error && (
@@ -101,34 +122,60 @@ const DiscountModal = ({ onClose, onSelect, totalAmount, pickupDate, returnDate 
           ) : discounts.length === 0 ? (
             <div className="text-center py-8">
               <Tag className="mx-auto mb-3 text-gray-400" size={48} />
-              <p className="text-gray-500">Hiện chưa có mã khuyến mãi nào</p>
+              <p className="text-gray-500">
+                {!user 
+                  ? "Đăng nhập để xem thêm mã khuyến mãi dành riêng cho bạn!"
+                  : "Hiện chưa có mã khuyến mãi nào phù hợp"
+                }
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
               {discounts.map((d) => {
                 const isExpiringSoon = new Date(d.validTo) - new Date() < 7 * 24 * 60 * 60 * 1000;
                 const isLowQuantity = d.quantity <= 10;
+                const needsLogin = requiresLogin(d);
 
                 return (
                   <div
                     key={d._id}
                     onClick={() => handleSelect(d)}
                     className={`border rounded-xl p-4 cursor-pointer transition-all relative overflow-hidden ${
-                      selectedCode === d.code
+                      needsLogin
+                        ? "border-gray-300 bg-gray-50 opacity-70"
+                        : selectedCode === d.code
                         ? "border-green-500 bg-green-50 shadow-md"
                         : "border-gray-200 hover:border-green-400 hover:bg-green-50 hover:shadow-sm"
                     }`}
                   >
                     {/* Badge góc trên phải */}
                     <div className="absolute top-3 right-3">
-                      <span className="text-xs font-semibold px-2 py-1 rounded-full bg-green-100 text-green-700">
+                      <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                        needsLogin 
+                          ? 'bg-gray-200 text-gray-600'
+                          : 'bg-green-100 text-green-700'
+                      }`}>
                         {getDiscountText(d)}
                       </span>
                     </div>
 
+                    {/* Login required badge */}
+                    {needsLogin && (
+                      <div className="absolute top-3 left-3">
+                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-blue-100 text-blue-700 flex items-center gap-1">
+                          <LogIn size={12} />
+                          Yêu cầu đăng nhập
+                        </span>
+                      </div>
+                    )}
+
                     {/* Mã code */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg font-bold text-gray-800 bg-gray-100 px-3 py-1 rounded-lg border-2 border-dashed border-green-400">
+                    <div className="flex items-center gap-2 mb-2 mt-6">
+                      <span className={`text-lg font-bold px-3 py-1 rounded-lg border-2 border-dashed ${
+                        needsLogin
+                          ? 'text-gray-500 bg-gray-100 border-gray-300'
+                          : 'text-gray-800 bg-gray-100 border-green-400'
+                      }`}>
                         {d.code}
                       </span>
                     </div>
@@ -147,11 +194,17 @@ const DiscountModal = ({ onClose, onSelect, totalAmount, pickupDate, returnDate 
                       )}
                       
                       {d.forNewUsersOnly && (
-                        <p className="text-blue-600 font-medium">• Dành cho khách hàng mới</p>
+                        <p className="text-blue-600 font-medium flex items-center gap-1">
+                          • Dành cho khách hàng mới
+                          {!user && <LogIn size={12} />}
+                        </p>
                       )}
                       
                       {d.forNthOrder && (
-                        <p className="text-purple-600 font-medium">• Áp dụng cho lần thuê thứ {d.forNthOrder}</p>
+                        <p className="text-purple-600 font-medium flex items-center gap-1">
+                          • Áp dụng cho lần thuê thứ {d.forNthOrder}
+                          {!user && <LogIn size={12} />}
+                        </p>
                       )}
                       
                       {d.requirePreBookingDays > 0 && (
@@ -183,16 +236,21 @@ const DiscountModal = ({ onClose, onSelect, totalAmount, pickupDate, returnDate 
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
-          <p className="text-xs text-gray-500">
-            Chọn một mã để áp dụng vào đơn hàng
-          </p>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium transition"
-          >
-            Đóng
-          </button>
+        <div className="p-4 border-t bg-gray-50">
+          <div className="flex justify-between items-center">
+            <p className="text-xs text-gray-500">
+              {!user 
+                ? "Đăng nhập để sử dụng tất cả mã khuyến mãi"
+                : "Chọn một mã để áp dụng vào đơn hàng"
+              }
+            </p>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium transition"
+            >
+              Đóng
+            </button>
+          </div>
         </div>
       </div>
     </div>

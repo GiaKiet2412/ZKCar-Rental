@@ -15,10 +15,15 @@ export const getAllDiscounts = async (req, res) => {
 // Lấy mã giảm giá khả dụng cho user
 export const getAvailableDiscounts = async (req, res) => {
   try {
-    const userId = req.user?._id; // Từ middleware auth
+    const userId = req.user?._id;
     const now = new Date();
 
-    // Lấy tất cả mã đang active và còn hiệu lực
+    // DEBUG: Log để kiểm tra
+    console.log('getAvailableDiscounts DEBUG:');
+    console.log('- req.user:', req.user);
+    console.log('- userId:', userId);
+    console.log('- Authorization header:', req.headers.authorization);
+
     let discounts = await Discount.find({
       isActive: true,
       validFrom: { $lte: now },
@@ -26,44 +31,59 @@ export const getAvailableDiscounts = async (req, res) => {
       quantity: { $gt: 0 }
     }).sort({ discountValue: -1 });
 
-    // Nếu có user, lọc theo điều kiện
-    if (userId) {
-      // Đếm số lần đã thuê xe
-      const bookingCount = await Booking.countDocuments({ 
-        user: userId,
-        status: { $in: ['completed', 'confirmed', 'ongoing'] }
-      });
+    console.log('- Total discounts before filter:', discounts.length);
 
-      // Lọc mã theo điều kiện
-      discounts = await Promise.all(
-        discounts.map(async (discount) => {
-          // Kiểm tra forNewUsersOnly
-          if (discount.forNewUsersOnly && bookingCount > 0) {
-            return null;
-          }
-
-          // Kiểm tra forNthOrder
-          if (discount.forNthOrder && bookingCount + 1 !== discount.forNthOrder) {
-            return null;
-          }
-
-          // Kiểm tra đã sử dụng mã này chưa (nếu forNewUsersOnly = true)
-          if (discount.forNewUsersOnly) {
-            const usedBefore = await Booking.findOne({
-              user: userId,
-              discountCode: discount.code
-            });
-            if (usedBefore) return null;
-          }
-
-          return discount;
-        })
+    // CRITICAL: Nếu KHÔNG có user (guest), loại bỏ mã có điều kiện đặc biệt
+    if (!userId) {
+      console.log('- Guest user detected: filtering special discounts');
+      discounts = discounts.filter(d => 
+        !d.forNewUsersOnly && 
+        !d.forNthOrder
       );
-
-      // Loại bỏ các mã null
-      discounts = discounts.filter(d => d !== null);
+      console.log('- After guest filter:', discounts.length);
+      return res.json(discounts);
     }
 
+    // Nếu có user, lọc theo điều kiện
+    console.log('- Logged user detected: applying booking filters');
+    const bookingCount = await Booking.countDocuments({ 
+      user: userId,
+      status: { $in: ['completed', 'confirmed', 'ongoing'] },
+      paymentStatus: 'paid'
+    });
+
+    console.log('- User bookingCount:', bookingCount);
+
+    discounts = await Promise.all(
+      discounts.map(async (discount) => {
+        // Kiểm tra forNewUsersOnly
+        if (discount.forNewUsersOnly && bookingCount > 0) {
+          return null;
+        }
+
+        // Kiểm tra forNthOrder
+        if (discount.forNthOrder && bookingCount + 1 !== discount.forNthOrder) {
+          return null;
+        }
+
+        // Kiểm tra đã sử dụng mã này chưa
+        if (discount.forNewUsersOnly) {
+          const usedBefore = await Booking.findOne({
+            user: userId,
+            discountCode: discount.code,
+            paymentStatus: 'paid'
+          });
+          if (usedBefore) return null;
+        }
+
+        return discount;
+      })
+    );
+
+    discounts = discounts.filter(d => d !== null);
+    console.log('- Final discounts for logged user:', discounts.length);
+    console.log('- Discount codes:', discounts.map(d => d.code));
+    
     res.json(discounts);
   } catch (err) {
     console.error('Error fetching available discounts:', err);
@@ -71,7 +91,7 @@ export const getAvailableDiscounts = async (req, res) => {
   }
 };
 
-// Validate mã giảm giá
+// Validate mã giảm giá - ENHANCED với guest user check
 export const validateDiscount = async (req, res) => {
   try {
     const { code, totalAmount, pickupDate, returnDate } = req.body;
@@ -89,8 +109,17 @@ export const validateDiscount = async (req, res) => {
       });
     }
 
-    // Kiểm tra thời gian hiệu lực
+    // CRITICAL: Guest user KHÔNG THỂ dùng mã có điều kiện đặc biệt
+    if (!userId && (discount.forNewUsersOnly || discount.forNthOrder)) {
+      return res.status(400).json({
+        valid: false,
+        message: 'Vui lòng đăng nhập để sử dụng mã giảm giá này'
+      });
+    }
+
     const now = new Date();
+
+    // 1. Kiểm tra thời gian hiệu lực
     if (now < discount.validFrom || now > discount.validTo) {
       return res.status(400).json({ 
         valid: false, 
@@ -98,7 +127,7 @@ export const validateDiscount = async (req, res) => {
       });
     }
 
-    // Kiểm tra số lượng
+    // 2. Kiểm tra số lượng
     if (discount.quantity <= 0) {
       return res.status(400).json({ 
         valid: false, 
@@ -106,15 +135,15 @@ export const validateDiscount = async (req, res) => {
       });
     }
 
-    // Kiểm tra giá trị đơn hàng tối thiểu
+    // 3. Kiểm tra giá trị đơn hàng tối thiểu
     if (totalAmount < discount.minOrderAmount) {
       return res.status(400).json({ 
         valid: false, 
-        message: `Đơn hàng phải từ ${discount.minOrderAmount.toLocaleString()}đ trở lên` 
+        message: `Đơn hàng phải từ ${discount.minOrderAmount.toLocaleString()}đ trở lên để sử dụng mã này` 
       });
     }
 
-    // Kiểm tra thời gian thuê xe
+    // 4. Kiểm tra thời gian thuê xe
     if (discount.rentalStart || discount.rentalEnd) {
       const pickup = new Date(pickupDate);
       const ret = new Date(returnDate);
@@ -122,39 +151,42 @@ export const validateDiscount = async (req, res) => {
       if (discount.rentalStart && pickup < discount.rentalStart) {
         return res.status(400).json({ 
           valid: false, 
-          message: 'Chuyến đi không nằm trong thời gian áp dụng mã' 
+          message: `Chuyến đi phải bắt đầu sau ${discount.rentalStart.toLocaleDateString('vi-VN')}` 
         });
       }
       
       if (discount.rentalEnd && ret > discount.rentalEnd) {
         return res.status(400).json({ 
           valid: false, 
-          message: 'Chuyến đi không nằm trong thời gian áp dụng mã' 
+          message: `Chuyến đi phải kết thúc trước ${discount.rentalEnd.toLocaleDateString('vi-VN')}` 
         });
       }
     }
 
-    // Kiểm tra điều kiện đặc biệt nếu có userId
+    // 5. Kiểm tra điều kiện đặc biệt (chỉ với user đã đăng nhập)
     if (userId) {
       const bookingCount = await Booking.countDocuments({ 
         user: userId,
-        status: { $in: ['completed', 'confirmed', 'ongoing'] }
+        status: { $in: ['completed', 'confirmed', 'ongoing'] },
+        paymentStatus: 'paid'
       });
 
-      // Chỉ dành cho khách hàng mới
-      if (discount.forNewUsersOnly && bookingCount > 0) {
-        return res.status(400).json({ 
-          valid: false, 
-          message: 'Mã chỉ dành cho khách hàng mới' 
-        });
-      }
-
-      // Kiểm tra đã sử dụng mã này chưa
+      // 5a. Chỉ dành cho khách hàng mới
       if (discount.forNewUsersOnly) {
+        if (bookingCount > 0) {
+          return res.status(400).json({ 
+            valid: false, 
+            message: 'Mã này chỉ dành cho khách hàng đặt xe lần đầu tiên' 
+          });
+        }
+
+        // Kiểm tra đã sử dụng mã này chưa
         const usedBefore = await Booking.findOne({
           user: userId,
-          discountCode: discount.code
+          discountCode: discount.code,
+          paymentStatus: 'paid'
         });
+        
         if (usedBefore) {
           return res.status(400).json({ 
             valid: false, 
@@ -163,27 +195,30 @@ export const validateDiscount = async (req, res) => {
         }
       }
 
-      // Lần thuê thứ N
-      if (discount.forNthOrder && bookingCount + 1 !== discount.forNthOrder) {
-        return res.status(400).json({ 
-          valid: false, 
-          message: `Mã chỉ áp dụng cho lần thuê thứ ${discount.forNthOrder}` 
-        });
+      // 5b. Lần thuê thứ N
+      if (discount.forNthOrder) {
+        const nextOrderNumber = bookingCount + 1;
+        if (nextOrderNumber !== discount.forNthOrder) {
+          return res.status(400).json({ 
+            valid: false, 
+            message: `Mã này chỉ áp dụng cho lần thuê thứ ${discount.forNthOrder}. Đây là lần thuê thứ ${nextOrderNumber} của bạn.` 
+          });
+        }
       }
     }
 
-    // Kiểm tra yêu cầu đặt trước
+    // 6. Kiểm tra yêu cầu đặt trước
     if (discount.requirePreBookingDays > 0) {
       const daysInAdvance = Math.floor((new Date(pickupDate) - now) / (1000 * 60 * 60 * 24));
       if (daysInAdvance < discount.requirePreBookingDays) {
         return res.status(400).json({ 
           valid: false, 
-          message: `Phải đặt trước ít nhất ${discount.requirePreBookingDays} ngày` 
+          message: `Phải đặt trước ít nhất ${discount.requirePreBookingDays} ngày để sử dụng mã này` 
         });
       }
     }
 
-    // Tính toán số tiền giảm
+    // 7. Tính toán số tiền giảm
     let discountAmount = 0;
     if (discount.discountType === 'percent') {
       discountAmount = (totalAmount * discount.discountValue) / 100;
