@@ -18,12 +18,6 @@ export const getAvailableDiscounts = async (req, res) => {
     const userId = req.user?._id;
     const now = new Date();
 
-    // DEBUG: Log để kiểm tra
-    console.log('getAvailableDiscounts DEBUG:');
-    console.log('- req.user:', req.user);
-    console.log('- userId:', userId);
-    console.log('- Authorization header:', req.headers.authorization);
-
     let discounts = await Discount.find({
       isActive: true,
       validFrom: { $lte: now },
@@ -31,28 +25,21 @@ export const getAvailableDiscounts = async (req, res) => {
       quantity: { $gt: 0 }
     }).sort({ discountValue: -1 });
 
-    console.log('- Total discounts before filter:', discounts.length);
-
     // CRITICAL: Nếu KHÔNG có user (guest), loại bỏ mã có điều kiện đặc biệt
     if (!userId) {
-      console.log('- Guest user detected: filtering special discounts');
       discounts = discounts.filter(d => 
         !d.forNewUsersOnly && 
         !d.forNthOrder
       );
-      console.log('- After guest filter:', discounts.length);
       return res.json(discounts);
     }
 
     // Nếu có user, lọc theo điều kiện
-    console.log('- Logged user detected: applying booking filters');
     const bookingCount = await Booking.countDocuments({ 
       user: userId,
       status: { $in: ['completed', 'confirmed', 'ongoing'] },
       paymentStatus: 'paid'
     });
-
-    console.log('- User bookingCount:', bookingCount);
 
     discounts = await Promise.all(
       discounts.map(async (discount) => {
@@ -81,9 +68,7 @@ export const getAvailableDiscounts = async (req, res) => {
     );
 
     discounts = discounts.filter(d => d !== null);
-    console.log('- Final discounts for logged user:', discounts.length);
-    console.log('- Discount codes:', discounts.map(d => d.code));
-    
+
     res.json(discounts);
   } catch (err) {
     console.error('Error fetching available discounts:', err);

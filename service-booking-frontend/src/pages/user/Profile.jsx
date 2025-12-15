@@ -151,7 +151,7 @@ const Profile = () => {
   const getStatusText = (status) => {
     switch (status) {
       case 'completed': return 'Hoàn thành';
-      case 'confirmed': return 'Đang thuê';
+      case 'confirmed': return 'Đã đặt';
       case 'ongoing': return 'Đang diễn ra';
       case 'cancelled': return 'Đã hủy';
       case 'pending': return 'Chờ xác nhận';

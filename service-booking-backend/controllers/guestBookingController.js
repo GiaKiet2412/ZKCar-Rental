@@ -9,6 +9,22 @@ const generateTrackingCode = () => {
 // Store tracking codes in memory (in production, use Redis)
 const trackingCodes = new Map();
 
+// ===== VALIDATION FUNCTIONS =====
+const validateEmail = (email) => {
+  if (!email) return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+};
+
+const validatePhone = (phone) => {
+  if (!phone) return false;
+  // Remove spaces and check if it's 10 digits starting with 0
+  const cleanPhone = phone.replace(/\s+/g, '');
+  const phoneRegex = /^0\d{9}$/;
+  return phoneRegex.test(cleanPhone);
+};
+// ===== END VALIDATION =====
+
 // Helper function to normalize input
 const normalizeInput = (input) => {
   if (!input) return '';
@@ -64,12 +80,18 @@ export const sendTrackingCode = async (req, res) => {
       });
     }
 
+    // Validate email if provided
     if (email && !validateEmail(email)) {
-      return res.status(400).json({ message: 'Email không hợp lệ' });
+      return res.status(400).json({ 
+        message: 'Email không hợp lệ. Vui lòng nhập đúng định dạng email@example.com' 
+      });
     }
 
+    // Validate phone if provided
     if (phone && !validatePhone(phone)) {
-      return res.status(400).json({ message: 'Số điện thoại không hợp lệ (10 chữ số, bắt đầu bằng 0)' });
+      return res.status(400).json({ 
+        message: 'Số điện thoại không hợp lệ. Vui lòng nhập 10 chữ số bắt đầu bằng 0' 
+      });
     }
 
     // Build search query
@@ -316,5 +338,8 @@ setInterval(() => {
       trackingCodes.delete(key);
       cleaned++;
     }
+  }
+  if (cleaned > 0) {
+    console.log(`Cleaned up ${cleaned} expired tracking codes`);
   }
 }, 60 * 1000); // Check every minute

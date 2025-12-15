@@ -1,13 +1,24 @@
 import React, { useState, useEffect } from "react";
-import { FaChartLine, FaEyeSlash } from "react-icons/fa";
-import API from "../../api/axios";
+import { FaChartLine, FaEyeSlash, FaSyncAlt } from "react-icons/fa";
+import { useAdminRealtime } from "../../context/AdminRealtimeContext";
 import BookingTable from "../../components/admin/BookingTable";
 import BookingDetailModal from "../../components/admin/BookingDetailModal";
 import BookingStatisticsCard from "../../components/admin/BookingStatisticsCard";
 import ToastNotification from "../../components/common/ToastNotification";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
+import API from "../../api/axios";
 
 const BookingManagementPage = () => {
+  const {
+    bookings: realtimeBookings,
+    lastUpdate,
+    isPolling,
+    startPolling,
+    stopPolling,
+    fetchBookings,
+    refreshAll
+  } = useAdminRealtime();
+
   const [bookings, setBookings] = useState([]);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -15,6 +26,7 @@ const BookingManagementPage = () => {
   const [toast, setToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [filters, setFilters] = useState({
     status: "",
@@ -30,39 +42,64 @@ const BookingManagementPage = () => {
     totalBookings: 0,
   });
 
+  // Start polling when component mounts
   useEffect(() => {
-    fetchBookings();
+    startPolling();
+    return () => stopPolling();
+  }, [startPolling, stopPolling]);
+
+  // Load bookings on mount and filter change
+  useEffect(() => {
+    loadBookings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  const fetchBookings = async () => {
+  // Update bookings from realtime context
+  useEffect(() => {
+    if (realtimeBookings.length > 0) {
+      setBookings(realtimeBookings);
+    }
+  }, [realtimeBookings]);
+
+  const loadBookings = async () => {
     try {
       setLoading(true);
-      const queryParams = new URLSearchParams();
+      const result = await fetchBookings(filters);
       
-      if (filters.status) queryParams.append("status", filters.status);
-      if (filters.startDate) queryParams.append("startDate", filters.startDate);
-      if (filters.endDate) queryParams.append("endDate", filters.endDate);
-      queryParams.append("page", filters.page);
-      queryParams.append("limit", filters.limit);
-
-      const response = await API.get(`api/bookings/admin/all?${queryParams.toString()}`);
-      
-      if (response.data.success) {
-        setBookings(response.data.bookings);
+      if (result) {
+        setBookings(result.bookings);
         setPagination({
-          currentPage: response.data.currentPage,
-          totalPages: response.data.totalPages,
-          totalBookings: response.data.totalBookings,
+          currentPage: result.currentPage,
+          totalPages: result.totalPages,
+          totalBookings: result.totalBookings,
         });
       }
     } catch (error) {
-      console.error("Error fetching bookings:", error);
+      console.error("Error loading bookings:", error);
       setToast({
-        message: error.response?.data?.message || "Lỗi khi tải danh sách đơn đặt xe",
+        message: "Lỗi khi tải danh sách đơn đặt xe",
         type: "error",
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshAll(filters);
+      setToast({
+        message: "Đã cập nhật dữ liệu mới nhất",
+        type: "success",
+      });
+    } catch (error) {
+      setToast({
+        message: "Lỗi khi làm mới dữ liệu",
+        type: "error",
+      });
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -105,7 +142,10 @@ const BookingManagementPage = () => {
               message: "Cập nhật trạng thái thành công",
               type: "success",
             });
-            fetchBookings();
+            
+            // Refresh data
+            await loadBookings();
+            
             if (selectedBooking?._id === bookingId) {
               setSelectedBooking(response.data.booking);
             }
@@ -135,7 +175,7 @@ const BookingManagementPage = () => {
               message: "Đã hoàn thành chuyến đi",
               type: "success",
             });
-            fetchBookings();
+            await loadBookings();
           }
         } catch (error) {
           setToast({
@@ -193,42 +233,80 @@ const BookingManagementPage = () => {
     return colorMap[status] || "bg-gray-100 text-gray-800";
   };
 
+  const formatLastUpdate = () => {
+    const now = new Date();
+    const diff = Math.floor((now - lastUpdate) / 1000);
+    
+    if (diff < 60) return `${diff} giây trước`;
+    if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+    return `${Math.floor(diff / 3600)} giờ trước`;
+  };
+
   return (
     <div className="container mx-auto p-6">
-      <div className="mb-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Quản lý đơn đặt xe</h1>
-          <p className="text-gray-600">
-            Tổng số đơn: {pagination.totalBookings} | Trang {pagination.currentPage}/{pagination.totalPages}
-          </p>
+      <div className="mb-6">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Quản lý đơn đặt xe</h1>
+            <div className="flex items-center gap-4">
+              <p className="text-gray-600">
+                Tổng số đơn: {pagination.totalBookings} | Trang {pagination.currentPage}/{pagination.totalPages}
+              </p>
+              {isPolling && (
+                <div className="flex items-center gap-2 text-green-600 text-sm">
+                  <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
+                  <span>Tự động cập nhật</span>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Cập nhật lần cuối: {formatLastUpdate()}
+            </p>
+          </div>
+          
+          <div className="flex gap-3">
+            <button
+              onClick={handleManualRefresh}
+              disabled={refreshing}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all flex items-center gap-2 ${
+                refreshing 
+                  ? 'bg-gray-300 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg'
+              }`}
+            >
+              <FaSyncAlt className={refreshing ? 'animate-spin' : ''} size={16} />
+              <span>{refreshing ? 'Đang cập nhật...' : 'Làm mới'}</span>
+            </button>
+            
+            <button
+              onClick={() => setShowStatistics(!showStatistics)}
+              className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 shadow-md hover:shadow-lg ${
+                showStatistics 
+                  ? 'bg-gray-500 hover:bg-gray-600 text-white' 
+                  : 'bg-green-600 hover:bg-green-700 text-white'
+              }`}
+            >
+              {showStatistics ? (
+                <>
+                  <FaEyeSlash size={18} />
+                  <span>Ẩn thống kê</span>
+                </>
+              ) : (
+                <>
+                  <FaChartLine size={18} />
+                  <span>Xem thống kê</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => setShowStatistics(!showStatistics)}
-          className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 shadow-md hover:shadow-lg ${
-            showStatistics 
-              ? 'bg-gray-500 hover:bg-gray-600 text-white' 
-              : 'bg-green-600 hover:bg-green-700 text-white'
-          }`}
-        >
-          {showStatistics ? (
-            <>
-              <FaEyeSlash size={18} />
-              <span>Ẩn thống kê</span>
-            </>
-          ) : (
-            <>
-              <FaChartLine size={18} />
-              <span>Xem thống kê</span>
-            </>
-          )}
-        </button>
-      </div>
 
-      {showStatistics && (
-        <div className="mb-6 animate-fadeIn">
-          <BookingStatisticsCard />
-        </div>
-      )}
+        {showStatistics && (
+          <div className="mb-6 animate-fadeIn">
+            <BookingStatisticsCard />
+          </div>
+        )}
+      </div>
 
       <div className="bg-white rounded-lg shadow-md p-4 mb-6">
         <h2 className="text-lg font-semibold mb-4">Bộ lọc</h2>

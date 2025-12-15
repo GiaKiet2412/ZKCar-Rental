@@ -13,15 +13,22 @@ export const SearchProvider = ({ children }) => {
   // Tạo searchData mặc định
   const createDefaultSearchData = () => {
     const now = new Date();
+    
+    // Pickup = bây giờ + 2 giờ, làm tròn LÊN giờ tiếp theo
     let pickup = addHours(now, 2);
     
-    // Làm tròn lên giờ tiếp theo
-    if (pickup.getMinutes() > 0) {
-      pickup = setHours(pickup, pickup.getHours() + 1);
+    // Luôn làm tròn lên giờ tròn tiếp theo
+    const minutes = pickup.getMinutes();
+    if (minutes > 0) {
+      pickup = addHours(pickup, 1); // +1 giờ nữa
       pickup = setMinutes(pickup, 0);
+      pickup.setSeconds(0);
+      pickup.setMilliseconds(0);
     }
     
-    const ret = addHours(pickup, 52); // Mặc định thuê 52 giờ
+    // Return = Pickup + ĐÚNG 52 giờ
+    const ret = addHours(pickup, 52);
+    
     const totalHours = differenceInHours(ret, pickup);
     const totalDays = Math.floor(totalHours / 24);
     const remainHours = totalHours % 24;
@@ -59,12 +66,9 @@ export const SearchProvider = ({ children }) => {
     // Kiểm tra idle time
     const idleMinutes = (now - lastUpdate) / (1000 * 60);
     if (idleMinutes > MAX_IDLE_MINUTES) {
-      console.log(`Đã idle ${Math.floor(idleMinutes)} phút, làm mới thời gian`);
-      return {
-        ...data,
-        ...recalculateTimes(data),
-        timestamp: now.toISOString()
-      };
+      console.log(`Đã idle ${Math.floor(idleMinutes)} phút, làm mới thời gian VÀ reset về 52h`);
+      // Luôn tạo mới với 52h, không giữ duration cũ
+      return createDefaultSearchData();
     }
 
     return data;
@@ -73,14 +77,19 @@ export const SearchProvider = ({ children }) => {
   // Tính toán lại thời gian giữ nguyên khoảng cách
   const recalculateTimes = (oldData) => {
     const now = new Date();
+    
+    // Pickup = bây giờ + 2 giờ, làm tròn LÊN giờ tiếp theo
     let pickup = addHours(now, 2);
     
-    if (pickup.getMinutes() > 0) {
-      pickup = setHours(pickup, pickup.getHours() + 1);
+    const minutes = pickup.getMinutes();
+    if (minutes > 0) {
+      pickup = addHours(pickup, 1);
       pickup = setMinutes(pickup, 0);
+      pickup.setSeconds(0);
+      pickup.setMilliseconds(0);
     }
 
-    // Giữ nguyên khoảng thời gian thuê
+    // Giữ CHÍNH XÁC duration cũ
     const durationHours = oldData.totalHours || 52;
     const ret = addHours(pickup, durationHours);
     
