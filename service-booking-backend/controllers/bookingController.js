@@ -4,6 +4,14 @@ import User from '../models/User.js';
 import Vehicle from '../models/Vehicle.js';
 import emailService from '../services/emailService.js';
 
+const BUFFER_HOURS = 1;
+
+const addBufferToTimeRange = (pickup, returnDate) => {
+  const pickupWithBuffer = new Date(pickup.getTime() - BUFFER_HOURS * 60 * 60 * 1000);
+  const returnWithBuffer = new Date(returnDate.getTime() + BUFFER_HOURS * 60 * 60 * 1000);
+  return { pickupWithBuffer, returnWithBuffer };
+};
+
 // Tạo booking mới với FULL VALIDATION
 export const createBooking = async (req, res) => {
   try {
@@ -32,8 +40,16 @@ export const createBooking = async (req, res) => {
     // ===== VALIDATE TIME & AVAILABILITY =====
     const pickup = new Date(pickupDate);
     const returnD = new Date(returnDate);
-    const pickupWithBuffer = new Date(pickup.getTime() - 60 * 60 * 1000);
-    const returnWithBuffer = new Date(returnD.getTime() + 60 * 60 * 1000);
+
+    const diffHours = Math.round((returnD - pickup) / (1000 * 60 * 60));
+    if (diffHours < 4) {
+      return res.status(400).json({
+        success: false,
+        message: 'Thời gian thuê tối thiểu là 4 giờ'
+      });
+    }
+
+    const { pickupWithBuffer, returnWithBuffer } = addBufferToTimeRange(pickup, returnD);
 
     const conflictingBooking = await Booking.findOne({
       vehicle: vehicleId,

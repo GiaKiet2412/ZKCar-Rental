@@ -13,12 +13,14 @@ import discountRoutes from './routes/discountRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import guestBookingRoutes from './routes/guestBookingRoutes.js';
+import adminUserRoutes from './routes/adminUserRoutes.js';
 
 const app = express();
 const dirPath = path.join(path.resolve(), 'uploads/vehicles');
 if (!fs.existsSync(dirPath)) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
+
 app.use(cors());
 app.use(express.json());
 
@@ -42,4 +44,5 @@ app.use('/api/auth', authRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/guest-bookings', guestBookingRoutes);
+app.use('/api/admin/users', adminUserRoutes);
 app.use('/uploads', express.static('uploads'));

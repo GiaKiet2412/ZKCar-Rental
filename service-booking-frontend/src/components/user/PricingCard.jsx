@@ -1,7 +1,7 @@
 import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { formatCurrencyVN } from '../../utils/formatUtils';
-import PickupTypeSelector from './PickupTypeSelector'; // IMPORT COMPONENT
+import PickupTypeSelector from './PickupTypeSelector';
 
 const PricingCard = ({
   vehicle,
@@ -103,7 +103,7 @@ const PricingCard = ({
             {timeBoxColor === "yellow" && (
               <div className="mt-3 pt-3 border-t border-yellow-200">
                 <p className="text-xs text-yellow-700 flex items-start gap-2">
-                  <span className="text-base">⚠️</span>
+                  <span className="text-base"></span>
                   <span>
                     Khung giờ buổi khuya (22:00 - 7:00) có thể có ít lựa chọn xe hơn so với các khung giờ khác.
                   </span>
@@ -114,7 +114,7 @@ const PricingCard = ({
             {timeBoxColor === "red" && (
               <div className="mt-3 pt-3 border-t border-red-200">
                 <p className="text-xs text-red-700 flex items-start gap-2">
-                  <span className="text-base">🚫</span>
+                  <span className="text-base"></span>
                   <span>
                     Thời gian không hợp lệ. Vui lòng chọn lại.
                   </span>

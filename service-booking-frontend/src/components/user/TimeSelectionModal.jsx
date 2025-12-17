@@ -391,7 +391,7 @@ const TimeSelectionModal = ({
           {(isPickupInvalidTime || isReturnInvalidTime) && (
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
               <div className="flex items-start gap-3">
-                <span className="text-yellow-600 text-xl">⚠️</span>
+                <span className="text-yellow-600 text-xl"></span>
                 <div className="text-sm text-gray-700">
                   <p className="font-semibold mb-1">Thời gian ngoài giờ hoạt động</p>
                   <p>

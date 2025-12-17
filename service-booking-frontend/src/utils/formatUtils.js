@@ -12,10 +12,10 @@ export function formatBookingRange(pickupFull, returnFull, { slash = true } = {}
   const normalize = (s) => {
     if (!s) return null;
 
-    // ✅ Nếu đã là Date object
+    // Nếu đã là Date object
     if (s instanceof Date) return s;
 
-    // ✅ Nếu không phải string thì bỏ qua
+    // Nếu không phải string thì bỏ qua
     if (typeof s !== "string") return null;
 
     let str = s.trim();

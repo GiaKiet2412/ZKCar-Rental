@@ -27,6 +27,23 @@ const VehicleTable = ({ vehicles, onEdit, onDelete, refreshData }) => {
     return price.toLocaleString("vi-VN") + " VNĐ";
   };
 
+  // Helper function để lấy tên brand an toàn
+  const getBrandName = (brand) => {
+    if (!brand) return "-";
+    
+    // Nếu brand là object (có thuộc tính name)
+    if (typeof brand === "object" && brand.name) {
+      return brand.name;
+    }
+    
+    // Nếu brand là string
+    if (typeof brand === "string") {
+      return brand;
+    }
+    
+    return "-";
+  };
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full border text-sm">
@@ -63,7 +80,7 @@ const VehicleTable = ({ vehicles, onEdit, onDelete, refreshData }) => {
                 />
               </td>
               <td className="py-2 px-4 font-medium">{v.name}</td>
-              <td className="py-2 px-4">{v.brand}</td>
+              <td className="py-2 px-4">{getBrandName(v.brand)}</td>
               <td className="py-2 px-4">{formatPrice(v.pricePerHour)}</td>
               <td className="py-2 px-4">{v.location}</td>
               <td className="py-2 px-4 text-center">{v.seats || "-"}</td>

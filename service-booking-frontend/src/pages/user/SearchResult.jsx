@@ -6,6 +6,7 @@ import AdvancedFilter from "../../components/user/AdvancedFilter";
 import { useSearch } from "../../context/SearchContext";
 import API from "../../api/axios";
 import { filterVehiclesByLocation } from "../../utils/districtUtils";
+import { getCardDisplayPrices } from "../../utils/pricingUtils";
 
 const SearchResultPage = () => {
   const navigate = useNavigate();
@@ -108,20 +109,29 @@ const SearchResultPage = () => {
   const getAvailabilityInfo = (vehicle) => {
     if (!vehicle.availabilityStatus) return null;
 
+    const BUFFER_HOURS = 1;
+
     if (vehicle.availabilityStatus === 'booked' && vehicle.nextAvailableTime) {
-      const date = new Date(vehicle.nextAvailableTime);
+      // Thêm 1 giờ buffer để hiển thị thời gian thực tế có thể nhận xe
+      const availableTime = new Date(new Date(vehicle.nextAvailableTime).getTime() + BUFFER_HOURS * 60 * 60 * 1000);
+      
       return (
         <p className="text-xs text-gray-500 mt-1">
-          Trống từ: {date.toLocaleDateString('vi-VN')} {date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+          Trống từ: {availableTime.toLocaleDateString('vi-VN')} {availableTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
         </p>
       );
     }
 
     if (vehicle.availabilityStatus === 'soon_available' && vehicle.currentBookingEnd) {
-      const date = new Date(vehicle.currentBookingEnd);
+      // Hiển thị giờ trả xe (chưa cộng buffer)
+      const returnTime = new Date(vehicle.currentBookingEnd);
+      // Thêm 1 giờ để hiển thị thời gian thực tế có thể nhận xe
+      const availableTime = new Date(returnTime.getTime() + BUFFER_HOURS * 60 * 60 * 1000);
+      
       return (
         <p className="text-xs text-blue-600 mt-1">
-          Sẽ trả: {date.toLocaleDateString('vi-VN')} {date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+          Sẽ trả: {returnTime.toLocaleDateString('vi-VN')} {returnTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} 
+          <span className="text-gray-500 ml-1">(có thể nhận từ {availableTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})</span>
         </p>
       );
     }
@@ -189,15 +199,29 @@ const SearchResultPage = () => {
                   
                   <p className="text-green-600 font-semibold">
                     {(() => {
-                      const h = searchData?.totalHours || 0;
-                      if (h <= 8) return `${formatCurrency(v.pricePerHour * 8)}/8h`;
-                      if (h <= 12) return `${formatCurrency(v.pricePerHour * 12)}/12h`;
-                      return `${formatCurrency(v.pricePerHour * 24)}/ngày`;
+                      const totalHours = searchData?.totalHours || 0;
+                      const { primary, secondary } = getCardDisplayPrices(v.pricePerHour, totalHours);
+                      
+                      return (
+                        <>
+                          {formatCurrency(primary.price)}/{primary.label}
+                          {secondary && (
+                            <>
+                              {' '}•{' '}
+                              {formatCurrency(secondary.price)}/{secondary.label}
+                            </>
+                          )}
+                        </>
+                      );
                     })()}
                   </p>
-                  <p className="text-gray-500 text-sm">
-                    {searchData?.totalDays || 0} ngày {searchData?.remainHours || 0} giờ
-                  </p>
+                  
+                  {searchData?.totalHours > 0 && (
+                    <p className="text-gray-500 text-sm">
+                      {searchData.totalDays > 0 && `${searchData.totalDays} ngày `}
+                      {searchData.remainHours > 0 && `${searchData.remainHours} giờ`}
+                    </p>
+                  )}
                   <div className="flex justify-between text-sm text-gray-500 pt-2 border-t">
                     <span>{v.seats} chỗ</span>
                     <span>{capitalize(v.transmission)}</span>

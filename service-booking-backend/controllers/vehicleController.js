@@ -31,7 +31,11 @@ export const createVehicle = async (req, res) => {
     }
 
     const newVehicle = await Vehicle.create(req.body);
-    res.status(201).json(newVehicle);
+    
+    // CRITICAL FIX: Đảm bảo trả về object với brand là string
+    const vehicleResponse = newVehicle.toObject();
+    
+    res.status(201).json(vehicleResponse);
   } catch (error) {
     console.error('Lỗi tạo xe:', error);
     res.status(400).json({
@@ -93,13 +97,18 @@ export const getVehicles = async (req, res) => {
       const pickup = new Date(pickupDate);
       const returnD = new Date(returnDate);
 
-      // Lấy tất cả bookings trong khoảng thời gian
+      // CRITICAL: Thêm buffer 1 giờ để tính availability
+      const BUFFER_HOURS = 1;
+      const pickupWithBuffer = new Date(pickup.getTime() - BUFFER_HOURS * 60 * 60 * 1000);
+      const returnWithBuffer = new Date(returnD.getTime() + BUFFER_HOURS * 60 * 60 * 1000);
+
+      // Lấy tất cả bookings trong khoảng thời gian (bao gồm buffer)
       const allBookings = await Booking.find({
         vehicle: { $in: vehicles.map(v => v._id) },
         status: { $in: ['pending', 'confirmed', 'ongoing'] },
         paymentStatus: 'paid',
         $or: [
-          { pickupDate: { $lte: returnD }, returnDate: { $gte: pickup } }
+          { pickupDate: { $lte: returnWithBuffer }, returnDate: { $gte: pickupWithBuffer } }
         ]
       }).lean();
 
@@ -123,11 +132,13 @@ export const getVehicles = async (req, res) => {
         let currentBookingEnd = null;
 
         if (vehicleBookings.length > 0) {
-          // Kiểm tra xem có conflict không
+          // Kiểm tra xem có conflict không (với buffer)
           const hasConflict = vehicleBookings.some(booking => {
             const bookingStart = new Date(booking.pickupDate);
             const bookingEnd = new Date(booking.returnDate);
-            return !(returnD <= bookingStart || pickup >= bookingEnd);
+            
+            // Conflict nếu có overlap (kể cả với buffer)
+            return !(returnWithBuffer <= bookingStart || pickupWithBuffer >= bookingEnd);
           });
 
           if (hasConflict) {
@@ -140,7 +151,7 @@ export const getVehicles = async (req, res) => {
           } else {
             // Xe trống nhưng có booking gần
             const upcomingBooking = vehicleBookings
-              .filter(b => new Date(b.pickupDate) > returnD)
+              .filter(b => new Date(b.pickupDate) > returnWithBuffer)
               .sort((a, b) => new Date(a.pickupDate) - new Date(b.pickupDate))[0];
             
             if (upcomingBooking) {
@@ -148,12 +159,12 @@ export const getVehicles = async (req, res) => {
               nextAvailableTime = new Date(upcomingBooking.pickupDate);
             }
 
-            // Kiểm tra xe sắp trả (trong vòng 6 giờ)
+            // Kiểm tra xe sắp trả (trong vòng 6 giờ trước pickup)
             const recentReturn = vehicleBookings
               .filter(b => {
                 const returnTime = new Date(b.returnDate);
-                return returnTime < pickup && 
-                       (pickup - returnTime) / (1000 * 60 * 60) <= 6;
+                return returnTime < pickupWithBuffer && 
+                       (pickupWithBuffer - returnTime) / (1000 * 60 * 60) <= 6;
               })
               .sort((a, b) => new Date(b.returnDate) - new Date(a.returnDate))[0];
             
@@ -210,7 +221,7 @@ const getSortPriority = (status) => {
 
 export const getVehicleById = async (req, res) => {
   try {
-    const vehicle = await Vehicle.findById(req.params.id);
+    const vehicle = await Vehicle.findById(req.params.id).lean();
     if (!vehicle) return res.status(404).json({ message: 'Không tìm thấy xe' });
     res.json(vehicle);
   } catch (err) {
@@ -243,7 +254,7 @@ export const updateVehicle = async (req, res) => {
     const updated = await Vehicle.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
-    });
+    }).lean();
 
     res.json(updated);
   } catch (err) {
@@ -324,22 +335,27 @@ export const checkAvailability = async (req, res) => {
     const pickup = new Date(pickupDate);
     const returnD = new Date(returnDate);
 
+    // CRITICAL: Thêm buffer 1 giờ trước/sau
+    const BUFFER_HOURS = 1;
+    const pickupWithBuffer = new Date(pickup.getTime() - BUFFER_HOURS * 60 * 60 * 1000);
+    const returnWithBuffer = new Date(returnD.getTime() + BUFFER_HOURS * 60 * 60 * 1000);
+
     const conflictingBooking = await Booking.findOne({
       vehicle: id,
       status: { $in: ['pending', 'confirmed', 'ongoing'] },
       paymentStatus: 'paid',
       $or: [
         {
-          pickupDate: { $lte: pickup },
-          returnDate: { $gte: pickup }
+          pickupDate: { $lte: pickupWithBuffer },
+          returnDate: { $gte: pickupWithBuffer }
         },
         {
-          pickupDate: { $lte: returnD },
-          returnDate: { $gte: returnD }
+          pickupDate: { $lte: returnWithBuffer },
+          returnDate: { $gte: returnWithBuffer }
         },
         {
-          pickupDate: { $gte: pickup },
-          returnDate: { $lte: returnD }
+          pickupDate: { $gte: pickupWithBuffer },
+          returnDate: { $lte: returnWithBuffer }
         }
       ]
     });
@@ -348,7 +364,7 @@ export const checkAvailability = async (req, res) => {
       return res.json({
         success: false,
         available: false,
-        message: 'Xe đã được đặt trong khung giờ này',
+        message: 'Xe đã được đặt trong khung giờ này (bao gồm buffer 1 giờ)',
         conflictingBooking: {
           pickupDate: conflictingBooking.pickupDate,
           returnDate: conflictingBooking.returnDate
@@ -397,7 +413,6 @@ export const getFilterOptions = async (req, res) => {
       arr.forEach(item => {
         if (item) {
           const key = item.toLowerCase();
-          // Lưu version capitalize
           if (!normalized[key]) {
             normalized[key] = item.charAt(0).toUpperCase() + item.slice(1).toLowerCase();
           }
@@ -442,8 +457,8 @@ export const getPriceRange = async (req, res) => {
     }
 
     res.json({
-      minPrice: Math.floor(result[0].minPrice / 10000) * 10000, // Làm tròn xuống 10k
-      maxPrice: Math.ceil(result[0].maxPrice / 10000) * 10000, // Làm tròn lên 10k
+      minPrice: Math.floor(result[0].minPrice / 10000) * 10000,
+      maxPrice: Math.ceil(result[0].maxPrice / 10000) * 10000,
       avgPrice: Math.round(result[0].avgPrice / 10000) * 10000
     });
   } catch (err) {

@@ -12,6 +12,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import VehicleManagementPage from "./pages/admin/VehicleManagementPage";
 import DiscountManagementPage from "./pages/admin/DiscountManagementPage";
 import BookingManagementPage from "./pages/admin/BookingManagementPage";
+import UserManagementPage from "./pages/admin/UserManagementPage";
 
 // USER
 import HomePage from "./pages/user/HomePage";
@@ -42,6 +43,7 @@ function App() {
 
                 {/* ========== ADMIN ROUTES ========== */}
                 <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>}>
+                  <Route path="users" element={<UserManagementPage />} />
                   <Route path="vehicles" element={<VehicleManagementPage />} />
                   <Route path="discounts" element={<DiscountManagementPage />} />
                   <Route path="bookings" element={<BookingManagementPage />} />
@@ -56,7 +58,7 @@ function App() {
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/guest-tracking" element={<GuestTrackingPage />} />
                 
-                {/* BOOKING & PAYMENT ROUTES - QUAN TRỌNG: confirm phải đứng TRƯỚC :bookingId */}
+                {/* BOOKING & PAYMENT ROUTES */}
                 <Route path="/booking/confirm" element={<BookingConfirmation />} />
                 <Route path="/booking/:bookingId" element={<BookingDetail />} />
                 <Route path="/payment/success" element={<PaymentSuccess />} />

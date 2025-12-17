@@ -30,12 +30,37 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
   const [isOtherBrand, setIsOtherBrand] = useState(false);
   const [newBrand, setNewBrand] = useState("");
 
+  // Helper function để lấy tên brand an toàn
+  const getBrandName = (brand) => {
+    if (!brand) return "";
+    if (typeof brand === "object" && brand.name) return brand.name;
+    if (typeof brand === "string") return brand;
+    return "";
+  };
+
   useEffect(() => {
     if (vehicle) {
-      setFormData(vehicle);
+      const brandName = getBrandName(vehicle.brand);
+      
+      setFormData({
+        name: vehicle.name || "",
+        brand: brandName,
+        pricePerHour: vehicle.pricePerHour || "",
+        description: vehicle.description || "",
+        location: vehicle.location || "",
+        locationPickUp: vehicle.locationPickUp || "",
+        seats: vehicle.seats || "",
+        transmission: vehicle.transmission || "Số tự động",
+        fuelType: vehicle.fuelType || "Điện",
+        isAvailable: vehicle.isAvailable ?? true,
+        images: vehicle.images || [],
+      });
+
       setPreviewUrls(
         vehicle.images?.map((url) => `http://localhost:5000${url}`) || []
       );
+
+      setIsOtherBrand(brandName === "Hãng Khác");
     } else {
       setFormData({
         name: "",
@@ -43,6 +68,7 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
         pricePerHour: "",
         description: "",
         location: "",
+        locationPickUp: "",
         seats: "",
         transmission: "Số tự động",
         fuelType: "Điện",
@@ -51,6 +77,8 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
       });
       setPreviewUrls([]);
       setSelectedFiles([]);
+      setIsOtherBrand(false);
+      setNewBrand("");
     }
   }, [vehicle]);
 
@@ -60,7 +88,15 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
         const res = await API.get("/api/vehicles/brands", {
           headers: { "Cache-Control": "no-cache" },
         });
-        setBrands([...res.data, "Hãng Khác"]);
+
+        // CRITICAL FIX: Luôn extract .name từ brand objects
+        const brandNames = res.data.map((b) => {
+          if (typeof b === "object" && b.name) return b.name;
+          if (typeof b === "string") return b;
+          return null;
+        }).filter(Boolean);
+
+        setBrands([...brandNames, "Hãng Khác"]);
       } catch (err) {
         console.error("Lỗi lấy danh sách hãng:", err);
         setBrands(["Hãng Khác"]);
@@ -68,12 +104,15 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
     };
 
     fetchBrands();
-  }, [vehicle]);
+  }, []);
 
   const handleBrandChange = (e) => {
     const value = e.target.value;
     setFormData({ ...formData, brand: value });
     setIsOtherBrand(value === "Hãng Khác");
+    if (value !== "Hãng Khác") {
+      setNewBrand("");
+    }
   };
 
   const handleChange = (e) => {
@@ -137,17 +176,32 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
       } else {
         await API.post("/api/vehicles", dataToSend, config);
 
+        // Cập nhật lại danh sách brands sau khi thêm xe mới
         try {
           const brandRes = await API.get("/api/vehicles/brands", {
             headers: { "Cache-Control": "no-cache" },
           });
-          setBrands([...brandRes.data, "Hãng Khác"]);
+          
+          // CRITICAL FIX: Chỉ lấy .name từ mỗi brand object
+          const brandNames = brandRes.data.map((b) => {
+            if (typeof b === "object" && b.name) return b.name;
+            if (typeof b === "string") return b;
+            return null;
+          }).filter(Boolean);
+          
+          setBrands([...brandNames, "Hãng Khác"]);
         } catch (err) {
           console.error("Lỗi khi cập nhật danh sách hãng sau khi thêm xe:", err);
         }
       }
 
-      previewUrls.forEach((url) => url.startsWith("blob:") && URL.revokeObjectURL(url));
+      // Cleanup blob URLs
+      previewUrls.forEach((url) => {
+        if (url.startsWith("blob:")) {
+          URL.revokeObjectURL(url);
+        }
+      });
+      
       onSuccess();
     } catch (err) {
       console.error("Lỗi khi lưu xe:", err);
@@ -184,9 +238,9 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
             className="w-full border border-gray-300 rounded-md px-3 py-2"
           >
             <option value="">-- Chọn hãng xe --</option>
-            {brands.map((b) => (
-              <option key={b} value={b}>
-                {b}
+            {brands.map((brandName) => (
+              <option key={brandName} value={brandName}>
+                {brandName}
               </option>
             ))}
           </select>
@@ -197,6 +251,7 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
               placeholder="Nhập tên hãng xe mới"
               value={newBrand}
               onChange={(e) => setNewBrand(e.target.value)}
+              required
               className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2"
             />
           )}
