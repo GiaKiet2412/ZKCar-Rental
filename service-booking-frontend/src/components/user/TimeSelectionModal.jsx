@@ -18,7 +18,7 @@ const TimeSelectionModal = ({
   const [returnTime, setReturnTime] = useState(initialReturn);
   const [activeTab, setActiveTab] = useState('pickup');
   const [bookedSlots, setBookedSlots] = useState([]);
-  const [isLoadingSlots, setIsLoadingSlots] = useState(false); //
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   
   const totalHours = Math.max(Math.round((returnTime - pickup) / (1000 * 60 * 60)), 0);
   const totalDays = Math.floor(totalHours / 24);
@@ -30,7 +30,6 @@ const TimeSelectionModal = ({
   const isPickupInvalidTime = pickupHour < 7 || pickupHour >= 22;
   const isReturnInvalidTime = returnHour < 7 || returnHour >= 22;
 
-  //: Fetch booked slots khi component mount
   useEffect(() => {
     if (vehicleId) {
       fetchBookedSlots();
@@ -62,7 +61,6 @@ const TimeSelectionModal = ({
     }
   };
 
-  //: Hàm kiểm tra ngày có bị booked không
   const isDateBooked = (date) => {
     return bookedSlots.some(slot => {
       const slotStart = startOfDay(slot.start);
@@ -76,23 +74,38 @@ const TimeSelectionModal = ({
     });
   };
 
-  //: Hàm kiểm tra giờ có bị booked không
   const isHourBooked = (date, hour) => {
-    const checkTime = setHours(setMinutes(date, 0), hour);
+    // CRITICAL: Reset milliseconds và seconds về 0
+    let checkTime = setHours(setMinutes(date, 0), hour);
+    checkTime = new Date(checkTime.getFullYear(), checkTime.getMonth(), checkTime.getDate(), hour, 0, 0, 0);
+    const checkTimeMs = checkTime.getTime();
     
-    return bookedSlots.some(slot => {
-      // Thêm buffer 1 giờ trước và sau
-      const slotStart = new Date(slot.start.getTime() - 60 * 60 * 1000);
-      const slotEnd = new Date(slot.end.getTime() + 60 * 60 * 1000);
+    const isBlocked = bookedSlots.some(slot => {
+      // Buffer 1 giờ trước pickup và sau return
+      const bufferStart = new Date(slot.start.getTime() - 60 * 60 * 1000);
+      const bufferEnd = new Date(slot.end.getTime() + 60 * 60 * 1000);
       
-      return isWithinInterval(checkTime, { 
-        start: slotStart, 
-        end: slotEnd 
-      });
+      const bufferStartMs = bufferStart.getTime();
+      const bufferEndMs = bufferEnd.getTime();
+      
+      // Sử dụng <= và >= để BAO GỒM cả điểm cuối
+      // Giờ bị block nếu: bufferStart <= checkTime <= bufferEnd
+      const result = checkTimeMs >= bufferStartMs && checkTimeMs <= bufferEndMs;
+      
+      return result;
     });
+    return isBlocked;
   };
 
-  // Close modal khi click outside
+  const findFirstAvailableHour = (date, minHour = 0) => {
+    for (let h = minHour; h < 24; h++) {
+      if (!isHourBooked(date, h)) {
+        return h;
+      }
+    }
+    return minHour; // Fallback
+  };
+
   useEffect(() => {
     const onClick = (e) => {
       if (modalRef.current && !modalRef.current.contains(e.target)) {
@@ -122,7 +135,6 @@ const TimeSelectionModal = ({
       return;
     }
 
-    //: Kiểm tra availability trước khi confirm
     try {
       const res = await API.post(`/api/vehicles/${vehicleId}/check-availability`, {
         pickupDate: pickup.toISOString(),
@@ -152,15 +164,36 @@ const TimeSelectionModal = ({
     });
   };
 
-  const renderDatePicker = () => {
+  const handleDateClick = (day) => {
     const targetDate = activeTab === 'pickup' ? pickup : returnTime;
     const setTargetDate = activeTab === 'pickup' ? setPickup : setReturnTime;
+    
+    const currentHour = targetDate.getHours();
+    let newHour = currentHour;
+    
+    let minHour = 0;
+    if (activeTab === 'pickup' && isSameDay(day, now)) {
+      minHour = minPickupTime.getHours();
+    } else if (activeTab === 'return' && isSameDay(day, pickup)) {
+      minHour = pickup.getHours() + 4;
+    }
+    
+    // Kiểm tra giờ hiện tại có hợp lệ không
+    if (currentHour < minHour || isHourBooked(day, currentHour)) {
+      newHour = findFirstAvailableHour(day, minHour);
+    }
+    
+    const newDate = setHours(setMinutes(day, 0), newHour);
+    setTargetDate(newDate);
+  };
+
+  const renderDatePicker = () => {
+    const targetDate = activeTab === 'pickup' ? pickup : returnTime;
     
     const days = Array.from({ length: 30 }, (_, i) => addDays(now, i));
     
     return (
       <div className="space-y-2">
-        {/* Day headers */}
         <div className="grid grid-cols-7 gap-2 mb-2">
           {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map(day => (
             <div key={day} className="text-center text-xs font-semibold text-gray-600 py-1">
@@ -169,7 +202,6 @@ const TimeSelectionModal = ({
           ))}
         </div>
         
-        {/* Loading indicator */}
         {isLoadingSlots && (
           <div className="text-center py-4 text-gray-500">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600 mx-auto"></div>
@@ -177,7 +209,6 @@ const TimeSelectionModal = ({
           </div>
         )}
         
-        {/* Date buttons */}
         <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
           {days.map(day => {
             const isSelected = isSameDay(day, targetDate);
@@ -196,10 +227,7 @@ const TimeSelectionModal = ({
               <button
                 key={day.toISOString()}
                 disabled={isDisabled}
-                onClick={() => {
-                  const newDate = setHours(setMinutes(day, 0), targetDate.getHours());
-                  setTargetDate(newDate);
-                }}
+                onClick={() => handleDateClick(day)}
                 className={`
                   w-full p-3 rounded-lg text-left transition-all flex items-center justify-between
                   ${isDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}
@@ -216,7 +244,7 @@ const TimeSelectionModal = ({
                   <div className="flex items-center gap-2 mt-1">
                     {isToday && <div className="text-xs opacity-75">Hôm nay</div>}
                     {isBooked && !isSelected && (
-                      <div className="text-xs text-orange-600">⚠️ Một số giờ đã được đặt</div>
+                      <div className="text-xs text-orange-600">Một số giờ đã được đặt</div>
                     )}
                   </div>
                 </div>
@@ -292,7 +320,6 @@ const TimeSelectionModal = ({
         ref={modalRef}
         className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
       >
-        {/* Header */}
         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
           <h2 className="text-2xl font-bold">Chọn thời gian thuê xe</h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition">
@@ -300,9 +327,7 @@ const TimeSelectionModal = ({
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Tab selector */}
           <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
             <button
               onClick={() => setActiveTab('pickup')}
@@ -346,7 +371,6 @@ const TimeSelectionModal = ({
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Date selector */}
             <div>
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <Calendar size={18} />
@@ -355,7 +379,6 @@ const TimeSelectionModal = ({
               {renderDatePicker()}
             </div>
 
-            {/* Hour selector */}
             <div>
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <Clock size={18} />
@@ -366,14 +389,13 @@ const TimeSelectionModal = ({
                   <span className="font-semibold text-yellow-700">Lưu ý:</span> Giờ có viền vàng (22h-7h) nằm ngoài giờ hoạt động
                 </div>
                 <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-xs">
-                  <span className="font-semibold text-red-700">Giờ đã đặt:</span> Giờ có dấu đỏ đã được đặt bởi người khác
+                  <span className="font-semibold text-red-700">Giờ đã đặt:</span> Giờ có dấu đỏ đã được đặt (bao gồm buffer 1h)
                 </div>
               </div>
               {renderHourSelector()}
             </div>
           </div>
 
-          {/* Duration summary */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <div className="text-center">
               <div className="text-sm text-gray-600 mb-1">Tổng thời gian thuê</div>
@@ -387,11 +409,9 @@ const TimeSelectionModal = ({
             </div>
           </div>
 
-          {/* Warnings */}
           {(isPickupInvalidTime || isReturnInvalidTime) && (
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
               <div className="flex items-start gap-3">
-                <span className="text-yellow-600 text-xl"></span>
                 <div className="text-sm text-gray-700">
                   <p className="font-semibold mb-1">Thời gian ngoài giờ hoạt động</p>
                   <p>
@@ -406,7 +426,6 @@ const TimeSelectionModal = ({
           )}
         </div>
 
-        {/* Footer */}
         <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex gap-3">
           <button
             onClick={onClose}
