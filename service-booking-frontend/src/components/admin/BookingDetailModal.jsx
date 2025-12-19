@@ -1,4 +1,4 @@
-import React from "react";
+import { getImageUrl } from "../../utils/imageUtils";
 import { FaTimes, FaCheck, FaMapMarkerAlt, FaPhone, FaEnvelope } from "react-icons/fa";
 
 const BookingDetailModal = ({
@@ -150,7 +150,8 @@ const BookingDetailModal = ({
             <div className="flex gap-4">
               {booking.vehicle?.images?.[0] && (
                 <img
-                  src={`http://localhost:5000${booking.vehicle.images[0]}`}
+                  src={getImageUrl(booking.vehicle.images[0])}
+                  onError={(e) => { e.target.src = '/no-image.png'; }}
                   alt={booking.vehicle.name}
                   className="w-32 h-32 rounded-lg object-cover"
                 />

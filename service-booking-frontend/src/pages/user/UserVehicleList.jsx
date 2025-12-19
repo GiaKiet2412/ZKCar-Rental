@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../../api/axios";
 import { getCardDisplayPrices } from "../../utils/pricingUtils";
+import { getImageUrl } from "../../utils/imageUtils";
 
 const UserVehicleList = () => {
   const navigate = useNavigate();
@@ -76,7 +77,8 @@ const UserVehicleList = () => {
                   className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition cursor-pointer"
                 >
                   <img
-                    src={v.images?.[0] ? `http://localhost:5000${v.images[0]}` : "/no-image.png"}
+                    src={getImageUrl(v.images?.[0])}
+                    onError={(e) => { e.target.src = '/no-image.png'; }}
                     alt={v.name}
                     className="w-full h-48 object-cover"
                   />

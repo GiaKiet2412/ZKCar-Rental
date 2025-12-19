@@ -1,16 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  Calendar, 
-  MapPin, 
-  Clock,
-  AlertCircle,
-  ArrowLeft,
-  CheckCircle2,
-  CreditCard
-} from 'lucide-react';
+import { Calendar, MapPin, Clock, AlertCircle, ArrowLeft, CheckCircle2, CreditCard} from 'lucide-react';
 import API from '../../api/axios';
 import { formatCurrencyVN } from '../../utils/formatUtils';
+import { getImageUrl } from '../../utils/imageUtils';
 import Header from '../../components/user/Header';
 
 const BookingConfirmation = () => {
@@ -214,7 +207,8 @@ const BookingConfirmation = () => {
               <div className="flex gap-4 mb-6 pb-6 border-b">
                 {vehicle.images?.[0] && (
                   <img
-                    src={`http://localhost:5000${vehicle.images[0]}`}
+                    src={getImageUrl(vehicle.images[0])}
+                    onError={(e) => { e.target.src = '/no-image.png'; }}
                     alt={vehicle.name}
                     className="w-24 h-24 object-cover rounded-xl"
                   />

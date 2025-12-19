@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Phone, Key, Search, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { getImageUrl } from '../../utils/imageUtils';
+import API from '../../api/axios';
 
 const GuestTrackingPage = () => {
   const [step, setStep] = useState(1);
@@ -74,13 +76,11 @@ const GuestTrackingPage = () => {
         phone: formData.phone
       });
       
-      const res = await fetch('http://localhost:5000/api/guest-bookings/request-tracking', {
+      const res = await API.post('/api/guest-bookings/request-tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
           email: formData.email || null,
           phone: formData.phone || null
-        })
       });
 
       const data = await res.json();
@@ -112,8 +112,7 @@ const GuestTrackingPage = () => {
       setLoading(true);
       setError('');
 
-      // IMPORTANT: Send EXACTLY what was used in request
-      const res = await fetch('http://localhost:5000/api/guest-bookings/verify-tracking', {
+      const res = await API.post('/api/guest-bookings/verify-tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -383,9 +382,7 @@ const GuestTrackingPage = () => {
             </div>
 
             {bookings.map(booking => {
-              const vehicleImage = booking.vehicle?.images?.[0] 
-                ? `http://localhost:5000${booking.vehicle.images[0]}`
-                : '/no-image.png';
+              const vehicleImage = getImageUrl(booking.vehicle?.images?.[0]);
 
               return (
                 <div 

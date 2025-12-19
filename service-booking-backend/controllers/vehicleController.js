@@ -1,25 +1,40 @@
 import Vehicle from '../models/Vehicle.js';
 import Brand from "../models/Brand.js";
 import Booking from '../models/Booking.js';
-import fs from 'fs';
-import path from 'path';
+import cloudinary from '../config/cloudinary.js';
 
-const deleteImageFile = (imagePath) => {
-  if (imagePath && imagePath.startsWith('/uploads/vehicles/')) {
-    const fullPath = path.join(path.resolve(), imagePath);
-    fs.unlink(fullPath, (err) => {
-      if (err) console.error('Lỗi xóa file ảnh:', err);
-      else console.log('Đã xóa file ảnh:', fullPath);
-    });
+// Helper: Xóa ảnh trên Cloudinary
+const deleteCloudinaryImage = async (imageUrl) => {
+  try {
+    if (!imageUrl) return;
+
+    // Chỉ xóa nếu là URL Cloudinary
+    if (imageUrl.includes('cloudinary.com')) {
+      // Extract public_id từ URL
+      // Format: https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{folder}/{public_id}.{format}
+      const urlParts = imageUrl.split('/');
+      const fileName = urlParts[urlParts.length - 1]; // filename.ext
+      const folder = urlParts[urlParts.length - 2]; // folder name
+      const publicId = `${folder}/${fileName.split('.')[0]}`; // folder/filename
+
+      await cloudinary.uploader.destroy(publicId);
+      console.log('Đã xóa ảnh trên Cloudinary:', publicId);
+    } else {
+      console.log('Bỏ qua xóa ảnh local (sẽ migrate sau):', imageUrl);
+    }
+  } catch (err) {
+    console.error('Lỗi xóa ảnh Cloudinary:', err);
   }
 };
 
 export const createVehicle = async (req, res) => {
   try {
+    // Đảm bảo images là array
     if (req.body.images && !Array.isArray(req.body.images)) {
       req.body.images = [req.body.images];
     }
 
+    // Xử lý brand mới
     if (req.body.newBrand && req.body.newBrand.trim() !== "") {
       const brandName = req.body.newBrand.trim().toUpperCase();
       const existingBrand = await Brand.findOne({ name: brandName });
@@ -31,8 +46,6 @@ export const createVehicle = async (req, res) => {
     }
 
     const newVehicle = await Vehicle.create(req.body);
-    
-    // CRITICAL FIX: Đảm bảo trả về object với brand là string
     const vehicleResponse = newVehicle.toObject();
     
     res.status(201).json(vehicleResponse);
@@ -45,7 +58,6 @@ export const createVehicle = async (req, res) => {
   }
 };
 
-// Lấy danh sách xe với sắp xếp thông minh
 export const getVehicles = async (req, res) => {
   try {
     const { 
@@ -83,7 +95,6 @@ export const getVehicles = async (req, res) => {
       query.location = { $regex: location, $options: 'i' };
     }
 
-    // Price range filter
     if (minPrice || maxPrice) {
       query.pricePerHour = {};
       if (minPrice) query.pricePerHour.$gte = Number(minPrice);
@@ -92,17 +103,14 @@ export const getVehicles = async (req, res) => {
 
     let vehicles = await Vehicle.find(query).lean();
 
-    // Nếu có pickupDate và returnDate, tính toán availability status
     if (pickupDate && returnDate) {
       const pickup = new Date(pickupDate);
       const returnD = new Date(returnDate);
 
-      // CRITICAL: Thêm buffer 1 giờ để tính availability
       const BUFFER_HOURS = 1;
       const pickupWithBuffer = new Date(pickup.getTime() - BUFFER_HOURS * 60 * 60 * 1000);
       const returnWithBuffer = new Date(returnD.getTime() + BUFFER_HOURS * 60 * 60 * 1000);
 
-      // Lấy tất cả bookings trong khoảng thời gian (bao gồm buffer)
       const allBookings = await Booking.find({
         vehicle: { $in: vehicles.map(v => v._id) },
         status: { $in: ['pending', 'confirmed', 'ongoing'] },
@@ -112,7 +120,6 @@ export const getVehicles = async (req, res) => {
         ]
       }).lean();
 
-      // Map bookings theo vehicle
       const bookingsByVehicle = {};
       allBookings.forEach(booking => {
         const vehicleId = booking.vehicle.toString();
@@ -122,7 +129,6 @@ export const getVehicles = async (req, res) => {
         bookingsByVehicle[vehicleId].push(booking);
       });
 
-      // Tính toán status cho mỗi xe
       vehicles = vehicles.map(vehicle => {
         const vehicleId = vehicle._id.toString();
         const vehicleBookings = bookingsByVehicle[vehicleId] || [];
@@ -132,24 +138,20 @@ export const getVehicles = async (req, res) => {
         let currentBookingEnd = null;
 
         if (vehicleBookings.length > 0) {
-          // Kiểm tra xem có conflict không (với buffer)
           const hasConflict = vehicleBookings.some(booking => {
             const bookingStart = new Date(booking.pickupDate);
             const bookingEnd = new Date(booking.returnDate);
             
-            // Conflict nếu có overlap (kể cả với buffer)
             return !(returnWithBuffer <= bookingStart || pickupWithBuffer >= bookingEnd);
           });
 
           if (hasConflict) {
             availabilityStatus = 'booked';
-            // Tìm thời gian trống tiếp theo
             const sortedBookings = vehicleBookings.sort((a, b) => 
               new Date(a.returnDate) - new Date(b.returnDate)
             );
             nextAvailableTime = new Date(sortedBookings[0].returnDate);
           } else {
-            // Xe trống nhưng có booking gần
             const upcomingBooking = vehicleBookings
               .filter(b => new Date(b.pickupDate) > returnWithBuffer)
               .sort((a, b) => new Date(a.pickupDate) - new Date(b.pickupDate))[0];
@@ -159,7 +161,6 @@ export const getVehicles = async (req, res) => {
               nextAvailableTime = new Date(upcomingBooking.pickupDate);
             }
 
-            // Kiểm tra xe sắp trả (trong vòng 6 giờ trước pickup)
             const recentReturn = vehicleBookings
               .filter(b => {
                 const returnTime = new Date(b.returnDate);
@@ -184,17 +185,14 @@ export const getVehicles = async (req, res) => {
         };
       });
 
-      // Sắp xếp theo độ ưu tiên availability
       vehicles.sort((a, b) => {
         if (a.sortPriority !== b.sortPriority) {
           return a.sortPriority - b.sortPriority;
         }
-        // Nếu cùng priority, sắp xếp theo giá
         return a.pricePerHour - b.pricePerHour;
       });
     }
 
-    // Áp dụng sắp xếp theo giá nếu được yêu cầu
     if (sort === "asc") {
       vehicles.sort((a, b) => a.pricePerHour - b.pricePerHour);
     } else if (sort === "desc") {
@@ -208,7 +206,6 @@ export const getVehicles = async (req, res) => {
   }
 };
 
-// Hàm xác định độ ưu tiên sắp xếp
 const getSortPriority = (status) => {
   switch (status) {
     case 'available': return 1;
@@ -234,13 +231,19 @@ export const updateVehicle = async (req, res) => {
     const vehicle = await Vehicle.findById(req.params.id);
     if (!vehicle) return res.status(404).json({ message: 'Không tìm thấy xe' });
 
+    // Xóa ảnh cũ trên Cloudinary nếu có ảnh bị remove
     if (req.body.images && Array.isArray(req.body.images)) {
       const oldImages = vehicle.images || [];
       const newImages = req.body.images;
       const removedImages = oldImages.filter(img => !newImages.includes(img));
-      removedImages.forEach(deleteImageFile);
+      
+      // Xóa ảnh cũ (chỉ Cloudinary)
+      for (const img of removedImages) {
+        await deleteCloudinaryImage(img);
+      }
     }
 
+    // Xử lý brand mới
     if (req.body.newBrand && req.body.newBrand.trim() !== "") {
       const brandName = req.body.newBrand.trim().toUpperCase();
       const existingBrand = await Brand.findOne({ name: brandName });
@@ -268,8 +271,11 @@ export const deleteVehicle = async (req, res) => {
     const vehicle = await Vehicle.findById(req.params.id);
     if (!vehicle) return res.status(404).json({ message: 'Không tìm thấy xe' });
 
+    // Xóa tất cả ảnh trên Cloudinary
     if (vehicle.images && vehicle.images.length > 0) {
-      vehicle.images.forEach(deleteImageFile);
+      for (const img of vehicle.images) {
+        await deleteCloudinaryImage(img);
+      }
     }
 
     await Vehicle.findByIdAndDelete(req.params.id);
@@ -335,7 +341,6 @@ export const checkAvailability = async (req, res) => {
     const pickup = new Date(pickupDate);
     const returnD = new Date(returnDate);
 
-    // CRITICAL: Thêm buffer 1 giờ trước/sau
     const BUFFER_HOURS = 1;
     const pickupWithBuffer = new Date(pickup.getTime() - BUFFER_HOURS * 60 * 60 * 1000);
     const returnWithBuffer = new Date(returnD.getTime() + BUFFER_HOURS * 60 * 60 * 1000);
@@ -386,7 +391,6 @@ export const checkAvailability = async (req, res) => {
   }
 };
 
-// API mới: Lấy danh sách hãng xe từ database
 export const getBrands = async (req, res) => {
   try {
     const brands = await Brand.find().sort({ name: 1 }).lean();
@@ -397,7 +401,6 @@ export const getBrands = async (req, res) => {
   }
 };
 
-// API mới: Lấy filter options từ database
 export const getFilterOptions = async (req, res) => {
   try {
     const [brands, seats, transmissions, fuelTypes] = await Promise.all([
@@ -407,7 +410,6 @@ export const getFilterOptions = async (req, res) => {
       Vehicle.distinct('fuelType')
     ]);
 
-    // Chuẩn hóa dữ liệu: loại bỏ trùng lặp case-insensitive
     const normalizeAndUnique = (arr) => {
       const normalized = {};
       arr.forEach(item => {
@@ -433,7 +435,6 @@ export const getFilterOptions = async (req, res) => {
   }
 };
 
-// API mới: Lấy price range
 export const getPriceRange = async (req, res) => {
   try {
     const result = await Vehicle.aggregate([

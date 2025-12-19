@@ -1,22 +1,9 @@
-// src/pages/user/BookingDetail.jsx - UPDATED
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  CheckCircle, 
-  Calendar, 
-  MapPin, 
-  CreditCard,
-  Clock,
-  AlertCircle,
-  ArrowLeft,
-  Info,
-  Truck,
-  Shield,
-  Receipt,
-  Wallet
-} from 'lucide-react';
+import { CheckCircle, Calendar, MapPin, CreditCard, Clock, AlertCircle, ArrowLeft, Info, Truck, Shield, Receipt, Wallet} from 'lucide-react';
 import API from '../../api/axios';
 import { formatCurrencyVN } from '../../utils/formatUtils';
+import { getImageUrl } from '../../utils/imageUtils';
 
 const BookingDetail = () => {
   const { bookingId } = useParams();
@@ -133,10 +120,7 @@ const BookingDetail = () => {
   const paymentStatusConfig = getPaymentStatusConfig(booking.paymentStatus);
   
   const vehicleImagePath = booking.vehicle?.images?.[0] || booking.vehicle?.image;
-  const vehicleImage = vehicleImagePath 
-    ? `http://localhost:5000${vehicleImagePath}` 
-    : '/no-image.png';
-
+  const vehicleImage = getImageUrl(vehicleImagePath);
   const depositAmount = booking.depositAmount || 3000000;
   const holdFee = booking.holdFee || 500000;
   const grandTotal = booking.finalAmount + depositAmount;

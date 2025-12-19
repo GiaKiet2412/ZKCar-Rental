@@ -1,13 +1,7 @@
 import React, { useState, useEffect } from "react";
 import API from "../../api/axios";
-import { 
-  FaClipboardList, 
-  FaCheckCircle, 
-  FaSpinner, 
-  FaTimesCircle,
-  FaDollarSign,
-  FaCar
-} from "react-icons/fa";
+import { getImageUrl } from "../../utils/imageUtils";
+import { FaClipboardList, FaCheckCircle, FaSpinner, FaTimesCircle, FaDollarSign, FaCar} from "react-icons/fa";
 
 const BookingStatisticsCard = () => {
   const [statistics, setStatistics] = useState(null);
@@ -163,7 +157,8 @@ const BookingStatisticsCard = () => {
                   </span>
                   {item.vehicleInfo?.images?.[0] && (
                     <img
-                      src={`http://localhost:5000${item.vehicleInfo.images[0]}`}
+                      src={getImageUrl(item.vehicleInfo.images[0])}
+                      onError={(e) => { e.target.src = '/no-image.png'; }}
                       alt={item.vehicleInfo.name}
                       className="w-12 h-12 rounded-md object-cover"
                     />

@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUserAuth } from '../../context/UserAuthContext';
 import Header from '../../components/user/Header';
-import axios from 'axios';
+import { getImageUrl } from '../../utils/imageUtils';
+import API from '../../api/axios';
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ const Profile = () => {
         setLoading(true);
         const token = localStorage.getItem('token');
         
-        const response = await axios.get('http://localhost:5000/api/auth/profile', {
+        const response = await API.get('/api/auth/profile', {
           headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -72,7 +73,7 @@ const Profile = () => {
     const fetchBookingHistory = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await axios.get('http://localhost:5000/api/bookings/my-bookings', {
+        const response = await API.get('/api/bookings/my-bookings', {
           headers: { Authorization: `Bearer ${token}` }
         });
         console.log('Booking history received:', response.data);
@@ -108,8 +109,7 @@ const Profile = () => {
       setLoading(true);
       const token = localStorage.getItem('token');
       
-      await axios.put(
-        'http://localhost:5000/api/auth/profile',
+      await API.put('/api/auth/profile',
         {
           name: formData.name,
           phone: formData.phone,
@@ -434,9 +434,7 @@ const Profile = () => {
                   ) : (
                     <div className="space-y-4">
                       {bookingHistory.map(booking => {
-                        const vehicleImage = booking.vehicle?.images?.[0] 
-                          ? `http://localhost:5000${booking.vehicle.images[0]}`
-                          : 'https://via.placeholder.com/150';
+                        const vehicleImage = getImageUrl(booking.vehicle?.images?.[0]) || 'https://via.placeholder.com/150';
 
                         let pickupLocation = 'N/A';
     

@@ -7,6 +7,7 @@ import { useSearch } from "../../context/SearchContext";
 import API from "../../api/axios";
 import { filterVehiclesByLocation } from "../../utils/districtUtils";
 import { getCardDisplayPrices } from "../../utils/pricingUtils";
+import { getImageUrl } from "../../utils/imageUtils";
 
 const SearchResultPage = () => {
   const navigate = useNavigate();
@@ -183,7 +184,8 @@ const SearchResultPage = () => {
               >
                 <div className="relative">
                   <img
-                    src={v.images?.[0] ? `http://localhost:5000${v.images[0]}` : "/no-image.png"}
+                    src={getImageUrl(v.images?.[0])}
+                    onError={(e) => { e.target.src = '/no-image.png'; }}
                     alt={v.name}
                     className="w-full h-48 object-cover"
                   />

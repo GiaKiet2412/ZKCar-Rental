@@ -1,4 +1,4 @@
-import React from "react";
+import { getImageUrl } from "../../utils/imageUtils";
 import { FaEye, FaCheck, FaTimes, FaInfoCircle } from "react-icons/fa";
 
 const BookingTable = ({
@@ -117,7 +117,8 @@ const BookingTable = ({
                   <div className="flex items-center">
                     {booking.vehicle?.images?.[0] && (
                       <img
-                        src={`http://localhost:5000${booking.vehicle.images[0]}`}
+                        src={getImageUrl(booking.vehicle.images[0])}
+                        onError={(e) => { e.target.src = '/no-image.png'; }}
                         alt={booking.vehicle.name}
                         className="h-10 w-10 rounded-md object-cover mr-3"
                       />

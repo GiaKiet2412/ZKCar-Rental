@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { getImageUrl } from '../../utils/imageUtils';
 
 const ImageGallery = ({ images }) => {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
@@ -23,9 +24,10 @@ const ImageGallery = ({ images }) => {
           }}
         >
           <img 
-            src={`http://localhost:5000${images[0]}`} 
+            src={getImageUrl(images[0])}
             alt="Ảnh xe" 
             className="w-full h-full object-cover" 
+            onError={(e) => { e.target.src = '/no-image.png'; }}
           />
         </div>
 
@@ -41,9 +43,10 @@ const ImageGallery = ({ images }) => {
               }}
             >
               <img 
-                src={`http://localhost:5000${img}`} 
+                src={getImageUrl(img)}
                 alt={`Ảnh ${i + 1}`} 
                 className="w-full h-full object-cover" 
+                onError={(e) => { e.target.src = '/no-image.png'; }}
               />
               {i === 3 && images.length > 5 && (
                 <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-lg font-semibold">
@@ -66,9 +69,10 @@ const ImageGallery = ({ images }) => {
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={`http://localhost:5000${images[currentImageIndex]}`}
+              src={getImageUrl(images[currentImageIndex])}
               alt={`Ảnh ${currentImageIndex + 1}`}
               className="max-h-[80vh] rounded-lg object-contain"
+              onError={(e) => { e.target.src = '/no-image.png'; }}
             />
 
             {images.length > 1 && (

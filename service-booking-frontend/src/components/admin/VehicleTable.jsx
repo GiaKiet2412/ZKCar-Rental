@@ -1,5 +1,6 @@
 import API from "../../api/axios";
 import { FaEdit, FaTrashAlt } from "react-icons/fa";
+import { getImageUrl } from "../../utils/imageUtils";
 
 const VehicleTable = ({ vehicles, onEdit, onDelete, refreshData }) => {
   const handleStatusChange = async (vehicle, newStatus) => {
@@ -72,7 +73,7 @@ const VehicleTable = ({ vehicles, onEdit, onDelete, refreshData }) => {
                 <img
                   src={
                     v.images && v.images.length > 0
-                      ? `http://localhost:5000${v.images[0]}`
+                      ? getImageUrl(v.images[0])
                       : "/no-image.png"
                   }
                   alt={v.name}
