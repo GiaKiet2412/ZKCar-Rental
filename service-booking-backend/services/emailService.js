@@ -5,18 +5,45 @@ dotenv.config();
 
 class EmailService {
   constructor() {
-    // Kiểm tra credentials trước khi tạo transporter
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.warn('Email credentials not configured');
       this.transporter = null;
       return;
     }
 
+    // Cấu hình SMTP với timeout và security tốt hơn
     this.transporter = nodemailer.createTransport({
       service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // Use TLS
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS, // App Password (không phải mật khẩu Gmail thông thường)
+        pass: process.env.EMAIL_PASS,
       },
+      tls: {
+        rejectUnauthorized: true,
+        minVersion: 'TLSv1.2'
+      },
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+      // Thêm options cho production
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
+      rateDelta: 1000,
+      rateLimit: 5
+    });
+
+    // Verify connection on startup
+    this.transporter.verify((error, success) => {
+      if (error) {
+        console.error('Email service verification failed:', error.message);
+        this.transporter = null;
+      } else {
+        console.log('Email service ready');
+      }
     });
   }
 
@@ -32,11 +59,12 @@ class EmailService {
     return `${hours}:${minutes}, ${day}/${month}/${year}`;
   }
 
-    // GỬI MÃ TRACKING CHO GUEST
+  // GỬI MÃ TRACKING CHO GUEST
   async sendTrackingCode(email, trackingCode, bookingsCount) {
     if (!this.transporter) {
-      console.warn('Email service chưa được cấu hình.');
-      return { success: false, message: 'Email service not configured' };
+      const errorMsg = 'Email service not configured or connection failed';
+      console.error('❌', errorMsg);
+      throw new Error(errorMsg);
     }
 
     try {
@@ -103,9 +131,9 @@ class EmailService {
                 <div class="warning-box">
                   <p style="margin: 0; color: #92400e; font-weight: 600;">Lưu ý quan trọng:</p>
                   <p style="margin: 8px 0 0 0; color: #92400e;">
-                    • Mã xác thực chỉ có hiệu lực trong 10 phút<br>
-                    • Không chia sẻ mã này với bất kỳ ai<br>
-                    • Nếu bạn không yêu cầu tra cứu, vui lòng bỏ qua email này
+                    Mã xác thực chỉ có hiệu lực trong 10 phút<br>
+                    Không chia sẻ mã này với bất kỳ ai<br>
+                    Nếu bạn không yêu cầu tra cứu, vui lòng bỏ qua email này
                   </p>
                 </div>
               </div>
@@ -125,12 +153,12 @@ class EmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log(`Tracking code đã gửi đến ${email}. MessageId: ${info.messageId}`);
+      console.log(`Tracking code sent to ${email}. MessageId: ${info.messageId}`);
       
       return { success: true, messageId: info.messageId };
     } catch (error) {
-      console.error('Lỗi khi gửi tracking code:', error);
-      throw error;
+      console.error('Error sending tracking code:', error.message);
+      throw new Error(`Failed to send email: ${error.message}`);
     }
   }
   

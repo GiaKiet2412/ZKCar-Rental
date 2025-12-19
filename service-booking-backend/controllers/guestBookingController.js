@@ -9,7 +9,7 @@ const generateTrackingCode = () => {
 // Store tracking codes in memory (in production, use Redis)
 const trackingCodes = new Map();
 
-// ===== VALIDATION FUNCTIONS =====
+// Validate
 const validateEmail = (email) => {
   if (!email) return false;
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,7 +23,6 @@ const validatePhone = (phone) => {
   const phoneRegex = /^0\d{9}$/;
   return phoneRegex.test(cleanPhone);
 };
-// ===== END VALIDATION =====
 
 // Helper function to normalize input
 const normalizeInput = (input) => {
@@ -80,21 +79,18 @@ export const sendTrackingCode = async (req, res) => {
       });
     }
 
-    // Validate email if provided
     if (email && !validateEmail(email)) {
       return res.status(400).json({ 
         message: 'Email không hợp lệ. Vui lòng nhập đúng định dạng email@example.com' 
       });
     }
 
-    // Validate phone if provided
     if (phone && !validatePhone(phone)) {
       return res.status(400).json({ 
         message: 'Số điện thoại không hợp lệ. Vui lòng nhập 10 chữ số bắt đầu bằng 0' 
       });
     }
 
-    // Build search query
     const query = buildSearchQuery(email, phone);
     
     if (!query.$or || query.$or.length === 0) {
@@ -114,7 +110,6 @@ export const sendTrackingCode = async (req, res) => {
       });
     }
 
-    // Lấy email từ booking nếu user chỉ nhập phone
     let recipientEmail = email;
     if (!recipientEmail && phone) {
       for (const booking of bookings) {
@@ -132,11 +127,8 @@ export const sendTrackingCode = async (req, res) => {
       }
     }
 
-    // Tạo tracking code
     const trackingCode = generateTrackingCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 phút
-
-    // Create unique key based on what user entered
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     const trackingKey = createTrackingKey(email, phone);
     
     if (!trackingKey) {
@@ -145,7 +137,6 @@ export const sendTrackingCode = async (req, res) => {
       });
     }
     
-    // Delete old code if exists
     if (trackingCodes.has(trackingKey)) {
       const oldData = trackingCodes.get(trackingKey);
       if (oldData.timeoutId) {
@@ -154,12 +145,10 @@ export const sendTrackingCode = async (req, res) => {
       trackingCodes.delete(trackingKey);
     }
 
-    // Auto cleanup after expiry
     const timeoutId = setTimeout(() => {
       trackingCodes.delete(trackingKey);
     }, 10 * 60 * 1000);
 
-    // Save new tracking code
     trackingCodes.set(trackingKey, {
       code: trackingCode,
       recipientEmail: recipientEmail,
@@ -170,21 +159,35 @@ export const sendTrackingCode = async (req, res) => {
       timeoutId
     });
 
-    // Gửi email
-    await emailService.sendTrackingCode(recipientEmail, trackingCode, bookings.length);
-
-    res.json({
-      success: true,
-      message: `Mã xác thực đã được gửi đến email ${recipientEmail}`,
-      recipientEmail,
-      expiresIn: 600,
-      bookingsFound: bookings.length
-    });
+    //TRY SENDING EMAIL WITH PROPER ERROR HANDLING
+    try {
+      await emailService.sendTrackingCode(recipientEmail, trackingCode, bookings.length);
+      
+      res.json({
+        success: true,
+        message: `Mã xác thực đã được gửi đến email ${recipientEmail}`,
+        recipientEmail,
+        expiresIn: 600,
+        bookingsFound: bookings.length
+      });
+    } catch (emailError) {
+      // Email failed but we still have the tracking code
+      console.error('Email sending failed:', emailError.message);
+      
+      res.status(500).json({
+        success: false,
+        message: 'Không thể gửi email xác thực. Vui lòng kiểm tra lại email hoặc thử lại sau.',
+        error: 'EMAIL_SERVICE_ERROR',
+        recipientEmail,
+        bookingsFound: bookings.length
+      });
+    }
 
   } catch (error) {
-    console.error('Error sending tracking code:', error);
+    console.error('Error in sendTrackingCode:', error);
     res.status(500).json({ 
-      message: 'Lỗi khi gửi mã xác thực',
+      success: false,
+      message: 'Lỗi hệ thống. Vui lòng thử lại sau.',
       error: error.message 
     });
   }

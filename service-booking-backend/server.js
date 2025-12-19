@@ -16,6 +16,9 @@ import guestBookingRoutes from './routes/guestBookingRoutes.js';
 import adminUserRoutes from './routes/adminUserRoutes.js';
 
 const app = express();
+
+app.set('trust proxy', 1);
+
 const dirPath = path.join(path.resolve(), 'uploads/vehicles');
 if (!fs.existsSync(dirPath)) {
   fs.mkdirSync(dirPath, { recursive: true });
