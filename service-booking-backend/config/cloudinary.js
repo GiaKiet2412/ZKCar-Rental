@@ -2,24 +2,11 @@ import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import multer from 'multer';
 
-// Log để debug
-console.log('Cloudinary Config Check:');
-console.log('CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME ? 'Set' : 'Missing');
-console.log('CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY ? 'Set' : 'Missing');
-console.log('CLOUDINARY_API_SECRET:', process.env.CLOUDINARY_API_SECRET ? 'Set' : 'Missing');
-
 // Cấu hình Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// CRITICAL: Kiểm tra config có được load đúng không
-const config = cloudinary.config();
-console.log('Cloudinary config loaded:', {
-  cloud_name: config.cloud_name,
-  api_key: config.api_key ? '***' : 'MISSING'
 });
 
 // Cấu hình Cloudinary Storage cho Multer
@@ -49,7 +36,7 @@ const fileFilter = (req, file, cb) => {
 
 // Cấu hình Multer với Cloudinary Storage
 export const upload = multer({
-  storage: storage, // SỬ DỤNG CLOUDINARY STORAGE, KHÔNG PHẢI LOCAL
+  storage: storage,
   fileFilter: fileFilter,
   limits: { 
     fileSize: 10 * 1024 * 1024 // 10MB (Cloudinary free plan cho phép 10MB/file)

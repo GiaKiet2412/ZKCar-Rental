@@ -29,12 +29,10 @@ const deleteCloudinaryImage = async (imageUrl) => {
 
 export const createVehicle = async (req, res) => {
   try {
-    // Đảm bảo images là array
     if (req.body.images && !Array.isArray(req.body.images)) {
       req.body.images = [req.body.images];
     }
 
-    // Xử lý brand mới
     if (req.body.newBrand && req.body.newBrand.trim() !== "") {
       const brandName = req.body.newBrand.trim().toUpperCase();
       const existingBrand = await Brand.findOne({ name: brandName });
@@ -237,13 +235,12 @@ export const updateVehicle = async (req, res) => {
       const newImages = req.body.images;
       const removedImages = oldImages.filter(img => !newImages.includes(img));
       
-      // Xóa ảnh cũ (chỉ Cloudinary)
+      // Xóa ảnh cũ (chỉ Cloudinary, bỏ qua local)
       for (const img of removedImages) {
         await deleteCloudinaryImage(img);
       }
     }
 
-    // Xử lý brand mới
     if (req.body.newBrand && req.body.newBrand.trim() !== "") {
       const brandName = req.body.newBrand.trim().toUpperCase();
       const existingBrand = await Brand.findOne({ name: brandName });

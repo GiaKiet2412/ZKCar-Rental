@@ -51,13 +51,10 @@ router.post('/upload', protect, checkRole('admin'), upload.single('image'), (req
       });
     }
 
-    console.log('Cloudinary upload success:', req.file);
-
-    // CRITICAL FIX: req.file.path là secure_url từ Cloudinary
-    // Đảm bảo response trả về Cloudinary URL, không phải local path
+    // req.file.path là secure_url từ Cloudinary
     res.json({ 
       success: true,
-      imageUrl: req.file.path, // Full Cloudinary URL: https://res.cloudinary.com/...
+      imageUrl: req.file.path, // Full URL: https://res.cloudinary.com/...
       publicId: req.file.filename // Public ID để xóa sau này
     });
   } catch (error) {

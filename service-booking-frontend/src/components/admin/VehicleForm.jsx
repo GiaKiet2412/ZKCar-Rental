@@ -17,7 +17,6 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
     pricePerHour: "",
     description: "",
     location: "",
-    locationPickUp: "",
     seats: "",
     transmission: "Số tự động",
     fuelType: "Điện",
@@ -30,8 +29,6 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
   const [brands, setBrands] = useState([]);
   const [isOtherBrand, setIsOtherBrand] = useState(false);
   const [newBrand, setNewBrand] = useState("");
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState("");
 
   // Helper function để lấy tên brand an toàn
   const getBrandName = (brand) => {
@@ -59,8 +56,16 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
         images: vehicle.images || [],
       });
 
-      // CRITICAL FIX: Chỉ dùng URL từ DB (đều là Cloudinary URL)
-      setPreviewUrls(vehicle.images || []);
+      setPreviewUrls(
+        vehicle.images?.map((url) => {
+          // Nếu đã là Cloudinary URL, giữ nguyên
+          if (url.startsWith('http://') || url.startsWith('https://')) {
+            return url;
+          }
+          // Nếu là local path, thêm prefix
+          return `http://localhost:5000${url}`;
+        }) || []
+      );
 
       setIsOtherBrand(brandName === "Hãng Khác");
     } else {
@@ -122,108 +127,61 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
     setFormData({ ...formData, [name]: type === "checkbox" ? checked : value });
   };
 
-  const handleImageSelect = async (e) => {
+  const handleImageSelect = (e) => {
     const files = Array.from(e.target.files);
-    if (files.length === 0) return;
+    setSelectedFiles((prev) => [...prev, ...files]);
+    const newPreviews = files.map((file) => URL.createObjectURL(file));
+    setPreviewUrls((prev) => [...prev, ...newPreviews]);
+  };
 
-    console.log(`🔄 Bắt đầu upload ${files.length} ảnh...`);
-    setIsUploading(true);
-    setUploadProgress(`Đang upload 0/${files.length}...`);
-
+  const uploadImages = async (files) => {
     const admin = JSON.parse(localStorage.getItem("adminInfo"));
-    
-    if (!admin?.token) {
-      alert("Vui lòng đăng nhập lại!");
-      setIsUploading(false);
-      return;
-    }
-
     const uploadedUrls = [];
-    const failedFiles = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      setUploadProgress(`Đang upload ${i + 1}/${files.length}: ${file.name}`);
-
-      try {
-        const fd = new FormData();
-        fd.append("image", file);
-        
-        console.log(`📤 Uploading file ${i + 1}: ${file.name} (${(file.size / 1024).toFixed(2)}KB)`);
-        
-        const res = await API.post("/api/vehicles/upload", fd, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${admin.token}`,
-          },
-        });
-
-        console.log(`✅ Upload response:`, res.data);
-
-        if (res.data.success && res.data.imageUrl) {
-          uploadedUrls.push(res.data.imageUrl);
-          console.log(`✅ Upload thành công: ${res.data.imageUrl}`);
-        } else {
-          console.error(`❌ Response không có imageUrl:`, res.data);
-          failedFiles.push(file.name);
-        }
-      } catch (error) {
-        console.error(`❌ Lỗi upload ${file.name}:`, error);
-        console.error('Error response:', error.response?.data);
-        failedFiles.push(file.name);
-      }
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await API.post("/api/vehicles/upload", fd, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+          Authorization: `Bearer ${admin?.token}`,
+        },
+      });
+      uploadedUrls.push(res.data.imageUrl);
     }
-
-    if (uploadedUrls.length > 0) {
-      // Cập nhật state với Cloudinary URLs
-      setFormData(prev => ({
-        ...prev,
-        images: [...prev.images, ...uploadedUrls]
-      }));
-      setPreviewUrls(prev => [...prev, ...uploadedUrls]);
-      console.log(`✅ Đã thêm ${uploadedUrls.length} ảnh vào form`);
-    }
-
-    if (failedFiles.length > 0) {
-      alert(`⚠️ Không thể upload ${failedFiles.length} ảnh:\n${failedFiles.join('\n')}`);
-    }
-
-    setIsUploading(false);
-    setUploadProgress("");
-    // Reset input để có thể chọn lại cùng file
-    e.target.value = '';
+    return uploadedUrls;
   };
 
   const handleRemoveImage = (index) => {
-    console.log(`🗑️ Xóa ảnh tại index ${index}`);
     setPreviewUrls((prev) => prev.filter((_, i) => i !== index));
     setFormData((prev) => ({
       ...prev,
       images: prev.images.filter((_, i) => i !== index),
     }));
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     try {
       const admin = JSON.parse(localStorage.getItem("adminInfo"));
       const config = { headers: { Authorization: `Bearer ${admin?.token}` } };
 
+      let uploadedUrls = [];
+      if (selectedFiles.length > 0) {
+        uploadedUrls = await uploadImages(selectedFiles);
+      }
+
       const dataToSend = {
         ...formData,
-        // images đã được upload lên Cloudinary rồi, chỉ cần gửi URLs
+        images: Array.from(new Set([...(formData.images || []), ...uploadedUrls])),
         newBrand: isOtherBrand ? newBrand : undefined,
       };
 
-      console.log("📤 Submitting vehicle data:", dataToSend);
-
       if (vehicle?._id) {
         await API.put(`/api/vehicles/${vehicle._id}`, dataToSend, config);
-        console.log("✅ Cập nhật xe thành công");
       } else {
         await API.post("/api/vehicles", dataToSend, config);
-        console.log("✅ Tạo xe mới thành công");
 
         // Cập nhật lại danh sách brands sau khi thêm xe mới
         try {
@@ -231,6 +189,7 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
             headers: { "Cache-Control": "no-cache" },
           });
           
+          // CRITICAL FIX: Chỉ lấy .name từ mỗi brand object
           const brandNames = brandRes.data.map((b) => {
             if (typeof b === "object" && b.name) return b.name;
             if (typeof b === "string") return b;
@@ -242,10 +201,17 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
           console.error("Lỗi khi cập nhật danh sách hãng sau khi thêm xe:", err);
         }
       }
+
+      // Cleanup blob URLs
+      previewUrls.forEach((url) => {
+        if (url.startsWith("blob:")) {
+          URL.revokeObjectURL(url);
+        }
+      });
       
       onSuccess();
     } catch (err) {
-      console.error("❌ Lỗi khi lưu xe:", err);
+      console.error("Lỗi khi lưu xe:", err);
       alert("Có lỗi xảy ra khi lưu xe: " + (err.response?.data?.message || err.message));
     }
   };
@@ -374,23 +340,15 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
 
         {/* --- Cột phải: nhiều ảnh + mô tả --- */}
         <div className="space-y-3">
-          <div className="relative">
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleImageSelect}
-              disabled={isUploading}
-              className="block w-full text-sm text-gray-600 file:bg-green-100 file:text-green-700 file:py-1 file:px-3 file:rounded disabled:opacity-50"
-            />
-            {isUploading && (
-              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
-                {uploadProgress}
-              </div>
-            )}
-          </div>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleImageSelect}
+            className="block w-full text-sm text-gray-600 file:bg-green-100 file:text-green-700 file:py-1 file:px-3 file:rounded"
+          />
 
-          {/* Hiển thị tất cả ảnh đã upload */}
+          {/* Hiển thị tất cả ảnh đã chọn */}
           {previewUrls.length > 0 && (
             <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto">
               {previewUrls.map((url, i) => (
@@ -399,18 +357,11 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
                     src={url}
                     alt={`preview-${i}`}
                     className="rounded-md w-full object-cover h-32"
-                    onError={(e) => {
-                      console.error('❌ Lỗi load ảnh:', url);
-                      e.target.src = '/no-image.png';
-                    }}
-                    onLoad={() => {
-                      console.log('✅ Load ảnh thành công:', url);
-                    }}
                   />
                   <button
                     type="button"
                     onClick={() => handleRemoveImage(i)}
-                    className="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-1 rounded-full hover:bg-red-700"
+                    className="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-1 rounded-full"
                   >
                     ✕
                   </button>
@@ -435,17 +386,16 @@ const VehicleForm = ({ vehicle, onSuccess, onCancel }) => {
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md"
           >
             Hủy
           </button>
         )}
         <button
           type="submit"
-          disabled={isUploading}
-          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
         >
-          {isUploading ? 'Đang upload...' : (vehicle ? "Cập nhật" : "Thêm mới")}
+          {vehicle ? "Cập nhật" : "Thêm mới"}
         </button>
       </div>
     </form>
