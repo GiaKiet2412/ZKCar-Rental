@@ -1,9 +1,13 @@
 # Backend env
 service-booking-backend/.env
+service-booking-backend/.env.local
+service-booking-backend/.env.production
 
 # Frontend env
 service-booking-frontend/.env
 service-booking-frontend/.env.local
+service-booking-frontend/.env.production
+service-booking-frontend/.env.development
 
 # Node modules for both
 service-booking-frontend/node_modules/
@@ -18,6 +22,24 @@ service-booking-backend/build/
 # Uploads
 service-booking-backend/uploads/
 
+# Testing
+service-booking-frontend/coverage/
+service-booking-backend/coverage/
+
 # System files
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
