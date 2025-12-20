@@ -46,6 +46,19 @@ router.post("/send-otp", async (req, res) => {
         name: 'KIETCAR - Thuê Xe Tự Lái'
       },
       subject: "Mã xác nhận đăng ký tài khoản - KIETCAR",
+      text: `Xin chào,
+
+      Cảm ơn bạn đã đăng ký tài khoản tại KIETCAR. 
+
+      MÃ XÁC NHẬN CỦA BẠN: ${otp}
+
+      Mã này sẽ hết hạn sau 5 phút.
+
+      Lưu ý: Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email này. Đừng chia sẻ mã OTP với bất kỳ ai để đảm bảo an toàn tài khoản.
+
+      ---
+      KIETCAR - Thuê Xe Điện Tự Lái
+      Website: ${process.env.CLIENT_URL}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
           <div style="text-align: center; margin-bottom: 30px;">
@@ -78,7 +91,8 @@ router.post("/send-otp", async (req, res) => {
             
             <p style="color: #888; font-size: 12px; margin-top: 20px;">
               Trân trọng,<br>
-              <strong style="color: #16a34a;">Đội ngũ KIETCAR</strong>
+              <strong style="color: #16a34a;">Đội ngũ KIETCAR</strong><br><br>
+              <em>Để nhận email quan trọng: Vui lòng thêm ${process.env.EMAIL_FROM} vào danh bạ hoặc đánh dấu "Không phải spam".</em>
             </p>
           </div>
         </div>
