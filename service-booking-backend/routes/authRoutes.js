@@ -1,5 +1,5 @@
 import express from 'express';
-import nodemailer from "nodemailer";
+import sgMail from '@sendgrid/mail';
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
@@ -8,9 +8,22 @@ import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
+// Initialize SendGrid
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  console.log(' SendGrid API initialized for auth routes');
+} else {
+  console.warn(' SendGrid API key not found for auth routes');
+}
+
 // Gửi mã OTP
 router.post("/send-otp", async (req, res) => {
   const { email } = req.body;
+  
+  if (!email) {
+    return res.status(400).json({ message: "Email là bắt buộc" });
+  }
+
   try {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -18,25 +31,25 @@ router.post("/send-otp", async (req, res) => {
     await EmailVerification.deleteOne({ email });
     await EmailVerification.create({ email, otp, expiresAt });
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
+    // Kiểm tra SendGrid có được config không
+    if (!process.env.SENDGRID_API_KEY || !process.env.EMAIL_FROM) {
+      console.error('SendGrid not configured');
+      return res.status(500).json({ 
+        message: "Dịch vụ email chưa được cấu hình. Vui lòng liên hệ quản trị viên." 
+      });
+    }
 
-    // Thêm tên hiển thị cho người gửi
-    await transporter.sendMail({
-      from: `"ZKCarRental" <${process.env.EMAIL_USER}>`, // Format: "Tên hiển thị" <email>
+    const msg = {
       to: email,
-      subject: "Mã xác nhận đăng ký tài khoản - ZKCarRental",
-      text: `Mã xác nhận của bạn là: ${otp}. Mã này sẽ hết hạn sau 5 phút.`,
-      // Thêm HTML để email đẹp hơn
+      from: {
+        email: process.env.EMAIL_FROM,
+        name: 'KIETCAR - Thuê Xe Tự Lái'
+      },
+      subject: "Mã xác nhận đăng ký tài khoản - KIETCAR",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
           <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #16a34a; margin: 0;">ZKCarRental</h1>
+            <h1 style="color: #16a34a; margin: 0;">KIETCAR</h1>
             <p style="color: #666; margin-top: 5px;">Dịch vụ cho thuê xe điện tự lái</p>
           </div>
           
@@ -44,7 +57,7 @@ router.post("/send-otp", async (req, res) => {
           
           <p style="color: #555; line-height: 1.6;">
             Chào bạn,<br><br>
-            Cảm ơn bạn đã đăng ký tài khoản tại <strong>ZKCarRental</strong>. 
+            Cảm ơn bạn đã đăng ký tài khoản tại <strong>KIETCAR</strong>. 
             Vui lòng sử dụng mã OTP dưới đây để hoàn tất quá trình đăng ký:
           </p>
           
@@ -65,17 +78,25 @@ router.post("/send-otp", async (req, res) => {
             
             <p style="color: #888; font-size: 12px; margin-top: 20px;">
               Trân trọng,<br>
-              <strong style="color: #16a34a;">Đội ngũ ZKCarRental</strong>
+              <strong style="color: #16a34a;">Đội ngũ KIETCAR</strong>
             </p>
           </div>
         </div>
       `
-    });
+    };
+
+    await sgMail.send(msg);
+    console.log(` OTP sent to ${email}`);
 
     res.json({ message: "Đã gửi mã xác nhận đến email của bạn" });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Lỗi khi gửi mã OTP" });
+    console.error('Error sending OTP:', error);
+    if (error.response) {
+      console.error('SendGrid error:', error.response.body);
+    }
+    res.status(500).json({ 
+      message: "Lỗi khi gửi mã OTP. Vui lòng kiểm tra lại email hoặc thử lại sau." 
+    });
   }
 });
 

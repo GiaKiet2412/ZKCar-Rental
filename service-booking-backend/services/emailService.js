@@ -1,50 +1,31 @@
-import nodemailer from 'nodemailer';
+import sgMail from '@sendgrid/mail';
 import { formatCurrencyVN } from '../utils/formatUtils.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
 class EmailService {
   constructor() {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.warn('Email credentials not configured');
-      this.transporter = null;
+    // Kiểm tra credentials
+    if (!process.env.SENDGRID_API_KEY) {
+      console.warn(' SendGrid API key not configured');
+      this.isConfigured = false;
       return;
     }
 
-    // Cấu hình SMTP với timeout và security tốt hơn
-    this.transporter = nodemailer.createTransport({
-      service: 'gmail',
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // Use TLS
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      tls: {
-        rejectUnauthorized: true,
-        minVersion: 'TLSv1.2'
-      },
-      connectionTimeout: 10000, // 10 seconds
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-      // Thêm options cho production
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
-      rateDelta: 1000,
-      rateLimit: 5
-    });
+    if (!process.env.EMAIL_FROM) {
+      console.warn(' EMAIL_FROM not configured');
+      this.isConfigured = false;
+      return;
+    }
 
-    // Verify connection on startup
-    this.transporter.verify((error, success) => {
-      if (error) {
-        console.error('Email service verification failed:', error.message);
-        this.transporter = null;
-      } else {
-        console.log('Email service ready');
-      }
-    });
+    try {
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+      this.isConfigured = true;
+      console.log(' SendGrid email service ready');
+    } catch (error) {
+      console.error(' SendGrid initialization failed:', error.message);
+      this.isConfigured = false;
+    }
   }
 
   // Format ngày giờ
@@ -61,22 +42,26 @@ class EmailService {
 
   // GỬI MÃ TRACKING CHO GUEST
   async sendTrackingCode(email, trackingCode, bookingsCount) {
-    if (!this.transporter) {
-      const errorMsg = 'Email service not configured or connection failed';
-      console.error('❌', errorMsg);
+    if (!this.isConfigured) {
+      const errorMsg = 'Email service not configured';
+      console.error('', errorMsg);
       throw new Error(errorMsg);
     }
 
     try {
-      const mailOptions = {
-        from: `"KIETCAR - Thuê Xe Tự Lái" <${process.env.EMAIL_USER}>`,
+      const msg = {
         to: email,
+        from: {
+          email: process.env.EMAIL_FROM,
+          name: 'KIETCAR - Thuê Xe Tự Lái'
+        },
         subject: 'Mã xác thực tra cứu đơn hàng - KIETCAR',
         html: `
           <!DOCTYPE html>
           <html>
           <head>
             <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
               body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f7fa; margin: 0; padding: 0; }
               .container { max-width: 600px; margin: 30px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
@@ -92,7 +77,11 @@ class EmailService {
               .warning-box { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 8px; margin: 20px 0; }
               .footer { background: #f9fafb; padding: 30px; text-align: center; color: #6b7280; font-size: 13px; border-top: 1px solid #e5e7eb; }
               .button { display: inline-block; background: #10b981; color: white; padding: 14px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; transition: background 0.3s; }
-              .button:hover { background: #059669; }
+              @media only screen and (max-width: 600px) {
+                .container { margin: 10px; }
+                .content { padding: 20px 15px; }
+                .tracking-code { font-size: 36px; letter-spacing: 4px; }
+              }
             </style>
           </head>
           <body>
@@ -152,20 +141,23 @@ class EmailService {
         `,
       };
 
-      const info = await this.transporter.sendMail(mailOptions);
-      console.log(`Tracking code sent to ${email}. MessageId: ${info.messageId}`);
+      const result = await sgMail.send(msg);
+      console.log(` Tracking code sent to ${email}. StatusCode: ${result[0].statusCode}`);
       
-      return { success: true, messageId: info.messageId };
+      return { success: true, messageId: result[0].headers['x-message-id'] };
     } catch (error) {
-      console.error('Error sending tracking code:', error.message);
+      console.error(' Error sending tracking code:', error.message);
+      if (error.response) {
+        console.error('SendGrid error details:', error.response.body);
+      }
       throw new Error(`Failed to send email: ${error.message}`);
     }
   }
-  
+
   // Gửi email xác nhận booking
   async sendBookingConfirmation(booking, recipientEmail) {
-    if (!this.transporter) {
-      console.warn('Email service chưa được cấu hình. Bỏ qua gửi email.');
+    if (!this.isConfigured) {
+      console.warn('Email service not configured. Skipping email.');
       return { success: false, message: 'Email service not configured' };
     }
 
@@ -185,15 +177,19 @@ class EmailService {
       const vehicleName = booking.vehicle?.name || 'Xe đã đặt';
       const bookingCode = booking._id.toString().slice(-8).toUpperCase();
 
-      const mailOptions = {
-        from: `"KIETCAR - Thuê Xe Tự Lái" <${process.env.EMAIL_USER}>`,
+      const msg = {
         to: recipientEmail,
+        from: {
+          email: process.env.EMAIL_FROM,
+          name: 'KIETCAR - Thuê Xe Tự Lái'
+        },
         subject: `Xác nhận đặt xe thành công - Mã ${bookingCode}`,
         html: `
           <!DOCTYPE html>
           <html>
           <head>
             <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
               body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
               .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -206,12 +202,17 @@ class EmailService {
               .highlight { background: #dcfce7; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #10b981; }
               .button { display: inline-block; background: #10b981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 10px 0; }
               .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
+              @media only screen and (max-width: 600px) {
+                .container { padding: 10px; }
+                .content { padding: 20px 15px; }
+                .info-row { flex-direction: column; }
+              }
             </style>
           </head>
           <body>
             <div class="container">
               <div class="header">
-                <h1 style="margin: 0; font-size: 28px;">🎉 Đặt xe thành công!</h1>
+                <h1 style="margin: 0; font-size: 28px;">Đặt xe thành công!</h1>
                 <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Cảm ơn bạn đã tin tưởng KIETCAR</p>
               </div>
               
@@ -220,7 +221,7 @@ class EmailService {
                 <p>Đơn đặt xe của bạn đã được xác nhận thành công! Dưới đây là thông tin chi tiết:</p>
 
                 <div class="booking-card">
-                  <h3 style="margin-top: 0; color: #10b981;">📋 Thông tin đặt xe</h3>
+                  <h3 style="margin-top: 0; color: #10b981;">Thông tin đặt xe</h3>
                   
                   <div class="info-row">
                     <span class="info-label">Mã đơn hàng:</span>
@@ -268,7 +269,7 @@ class EmailService {
                 </div>
 
                 <div class="highlight">
-                  <strong>⏰ Các bước tiếp theo:</strong>
+                  <strong>Các bước tiếp theo:</strong>
                   <ol style="margin: 10px 0 0 0; padding-left: 20px;">
                     <li>Chuẩn bị CCCD và Bằng lái xe (bản gốc)</li>
                     <li>Đến đúng địa điểm và giờ nhận xe đã đặt</li>
@@ -285,9 +286,9 @@ class EmailService {
 
                 <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">
                   <strong>Lưu ý quan trọng:</strong><br>
-                  • Vui lòng đến đúng giờ để không mất phí giữ chỗ<br>
-                  • Kiểm tra xe kỹ và báo ngay nếu có vấn đề<br>
-                  • Giữ liên lạc qua hotline: <strong>1900 xxxx</strong>
+                  Vui lòng đến đúng giờ để không mất phí giữ chỗ<br>
+                  Kiểm tra xe kỹ và báo ngay nếu có vấn đề<br>
+                  Giữ liên lạc qua hotline: <strong>1900 xxxx</strong>
                 </p>
 
                 <div class="footer">
@@ -305,20 +306,23 @@ class EmailService {
         `,
       };
 
-      const info = await this.transporter.sendMail(mailOptions);
-      console.log(`Email xác nhận đã gửi đến ${recipientEmail}. MessageId: ${info.messageId}`);
+      const result = await sgMail.send(msg);
+      console.log(` Booking confirmation sent to ${recipientEmail}`);
       
-      return { success: true, messageId: info.messageId };
+      return { success: true, messageId: result[0].headers['x-message-id'] };
     } catch (error) {
-      console.error('Lỗi khi gửi email xác nhận:', error);
+      console.error(' Error sending booking confirmation:', error.message);
+      if (error.response) {
+        console.error('SendGrid error details:', error.response.body);
+      }
       throw error;
     }
   }
 
   // Gửi email thông báo hủy
   async sendCancellationEmail(booking, recipientEmail, reason = '') {
-    if (!this.transporter) {
-      console.warn('Email service chưa được cấu hình. Bỏ qua gửi email.');
+    if (!this.isConfigured) {
+      console.warn('Email service not configured. Skipping email.');
       return { success: false, message: 'Email service not configured' };
     }
 
@@ -331,15 +335,19 @@ class EmailService {
 
       const bookingCode = booking._id.toString().slice(-8).toUpperCase();
 
-      const mailOptions = {
-        from: `"KIETCAR - Thuê Xe Tự Lái" <${process.env.EMAIL_USER}>`,
+      const msg = {
         to: recipientEmail,
+        from: {
+          email: process.env.EMAIL_FROM,
+          name: 'KIETCAR - Thuê Xe Tự Lái'
+        },
         subject: `Đơn đặt xe đã bị hủy - Mã ${bookingCode}`,
         html: `
           <!DOCTYPE html>
           <html>
           <head>
             <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
               body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
               .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -390,16 +398,18 @@ class EmailService {
         `,
       };
 
-      const info = await this.transporter.sendMail(mailOptions);
-      console.log(`Email hủy đơn đã gửi đến ${recipientEmail}`);
+      const result = await sgMail.send(msg);
+      console.log(` Cancellation email sent to ${recipientEmail}`);
       
-      return { success: true, messageId: info.messageId };
+      return { success: true, messageId: result[0].headers['x-message-id'] };
     } catch (error) {
-      console.error('Lỗi khi gửi email hủy:', error);
+      console.error(' Error sending cancellation email:', error.message);
+      if (error.response) {
+        console.error('SendGrid error details:', error.response.body);
+      }
       throw error;
     }
   }
 }
 
-// Export singleton instance
 export default new EmailService();

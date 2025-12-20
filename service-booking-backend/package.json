@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "migrate:images": "node scripts/migrateImagesToCloudinary.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -14,6 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^1.41.3",
