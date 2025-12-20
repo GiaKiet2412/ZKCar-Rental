@@ -15,7 +15,6 @@ const GuestTrackingPage = () => {
     trackingCode: ''
   });
   
-  // Store what user ACTUALLY entered for request
   const [requestedWith, setRequestedWith] = useState({
     email: '',
     phone: ''
@@ -25,7 +24,6 @@ const GuestTrackingPage = () => {
   const [bookings, setBookings] = useState([]);
   const [recipientEmail, setRecipientEmail] = useState('');
 
-  // Check if user is returning from booking detail with valid session
   useEffect(() => {
     const guestEmail = sessionStorage.getItem('guestEmail');
     const guestPhone = sessionStorage.getItem('guestPhone');
@@ -69,32 +67,37 @@ const GuestTrackingPage = () => {
     try {
       setLoading(true);
       setError('');
+      setSuccess('');
       
-      // Store what user entered
       setRequestedWith({
         email: formData.email,
         phone: formData.phone
       });
       
       const res = await API.post('/api/guest-bookings/request-tracking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-          email: formData.email || null,
-          phone: formData.phone || null
+        email: formData.email || null,
+        phone: formData.phone || null
       });
 
-      const data = await res.json();
+      console.log('Response:', res.data);
 
-      if (data.success) {
-        setSuccess(`Mã xác thực đã được gửi đến email ${data.recipientEmail}`);
-        setBookingsFound(data.bookingsFound);
-        setRecipientEmail(data.recipientEmail);
+      // Check for success in response
+      if (res.data.success) {
+        setSuccess(res.data.message);
+        setBookingsFound(res.data.bookingsFound);
+        setRecipientEmail(res.data.recipientEmail);
         setStep(2);
+        
+        // Show warning if email might be in spam
+        if (res.data.warning) {
+          setError(res.data.warning);
+        }
       } else {
-        setError(data.message || 'Có lỗi xảy ra');
+        setError(res.data.message || 'Có lỗi xảy ra');
       }
     } catch (err) {
-      setError('Có lỗi xảy ra. Vui lòng thử lại.');
+      console.error('Request error:', err);
+      setError(err.response?.data?.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -113,31 +116,25 @@ const GuestTrackingPage = () => {
       setError('');
 
       const res = await API.post('/api/guest-bookings/verify-tracking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: requestedWith.email || null,
-          phone: requestedWith.phone || null,
-          trackingCode: formData.trackingCode.toUpperCase()
-        })
+        email: requestedWith.email || null,
+        phone: requestedWith.phone || null,
+        trackingCode: formData.trackingCode.toUpperCase()
       });
 
-      const data = await res.json();
-
-      if (data.success) {
-        setBookings(data.bookings);
+      if (res.data.success) {
+        setBookings(res.data.bookings);
         setSuccess('Xác thực thành công!');
         
-        // Store in sessionStorage for returning from detail page
         sessionStorage.setItem('guestEmail', requestedWith.email || '');
         sessionStorage.setItem('guestPhone', requestedWith.phone || '');
-        sessionStorage.setItem('guestBookings', JSON.stringify(data.bookings));
-        sessionStorage.setItem('guestSessionExpiry', Date.now() + 30 * 60 * 1000); // 30 min
+        sessionStorage.setItem('guestBookings', JSON.stringify(res.data.bookings));
+        sessionStorage.setItem('guestSessionExpiry', Date.now() + 30 * 60 * 1000);
       } else {
-        setError(data.message || 'Mã xác thực không đúng');
+        setError(res.data.message || 'Mã xác thực không đúng');
       }
     } catch (err) {
-      setError('Mã xác thực không đúng hoặc đã hết hạn');
+      console.error('Verify error:', err);
+      setError(err.response?.data?.message || 'Mã xác thực không đúng hoặc đã hết hạn');
     } finally {
       setLoading(false);
     }
@@ -229,7 +226,12 @@ const GuestTrackingPage = () => {
         {success && !bookings.length && (
           <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
             <CheckCircle className="text-green-600 flex-shrink-0 mt-0.5" size={20} />
-            <p className="text-green-800 text-sm">{success}</p>
+            <div className="flex-1">
+              <p className="text-green-800 text-sm">{success}</p>
+              <p className="text-green-700 text-xs mt-2">
+                Vui lòng kiểm tra hộp thư đến và thư mục spam. Email có thể mất 1-2 phút để đến.
+              </p>
+            </div>
           </div>
         )}
 
@@ -278,7 +280,7 @@ const GuestTrackingPage = () => {
                   <Clock className="text-blue-600 flex-shrink-0 mt-0.5" size={18} />
                   <div className="text-sm text-blue-800">
                     <p className="font-semibold mb-1">Lưu ý:</p>
-                    <p>Mã xác thực sẽ được gửi đến email của bạn và có hiệu lực trong 10 phút.</p>
+                    <p>Mã xác thực sẽ được gửi đến email của bạn và có hiệu lực trong 10 phút. Vui lòng kiểm tra cả thư mục spam.</p>
                   </div>
                 </div>
               </div>
@@ -333,6 +335,7 @@ const GuestTrackingPage = () => {
                     setStep(1);
                     setFormData(prev => ({ ...prev, trackingCode: '' }));
                     setError('');
+                    setSuccess('');
                   }}
                   className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition"
                 >

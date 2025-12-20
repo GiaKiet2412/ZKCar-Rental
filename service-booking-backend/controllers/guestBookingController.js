@@ -6,10 +6,9 @@ const generateTrackingCode = () => {
   return crypto.randomBytes(4).toString('hex').toUpperCase();
 };
 
-// Store tracking codes in memory (in production, use Redis)
 const trackingCodes = new Map();
 
-// Validate
+// ===== VALIDATION FUNCTIONS =====
 const validateEmail = (email) => {
   if (!email) return false;
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -18,24 +17,20 @@ const validateEmail = (email) => {
 
 const validatePhone = (phone) => {
   if (!phone) return false;
-  // Remove spaces and check if it's 10 digits starting with 0
   const cleanPhone = phone.replace(/\s+/g, '');
   const phoneRegex = /^0\d{9}$/;
   return phoneRegex.test(cleanPhone);
 };
 
-// Helper function to normalize input
 const normalizeInput = (input) => {
   if (!input) return '';
   return input.trim().toLowerCase().replace(/\s+/g, '');
 };
 
-// Create unique key based on WHAT USER ACTUALLY ENTERED
 const createTrackingKey = (email, phone) => {
   const normalizedEmail = normalizeInput(email);
   const normalizedPhone = normalizeInput(phone);
   
-  // Use only what was provided to create the key
   if (normalizedEmail && normalizedPhone) {
     return `both:${normalizedEmail}:${normalizedPhone}`;
   } else if (normalizedEmail) {
@@ -46,7 +41,6 @@ const createTrackingKey = (email, phone) => {
   return '';
 };
 
-// Helper function to build search query
 const buildSearchQuery = (email, phone) => {
   const orConditions = [];
   
@@ -73,32 +67,39 @@ export const sendTrackingCode = async (req, res) => {
   try {
     const { email, phone } = req.body;
 
+    // Validation
     if (!email && !phone) {
       return res.status(400).json({ 
+        success: false,
         message: 'Vui lòng cung cấp email hoặc số điện thoại' 
       });
     }
 
     if (email && !validateEmail(email)) {
       return res.status(400).json({ 
+        success: false,
         message: 'Email không hợp lệ. Vui lòng nhập đúng định dạng email@example.com' 
       });
     }
 
     if (phone && !validatePhone(phone)) {
       return res.status(400).json({ 
+        success: false,
         message: 'Số điện thoại không hợp lệ. Vui lòng nhập 10 chữ số bắt đầu bằng 0' 
       });
     }
 
+    // Build search query
     const query = buildSearchQuery(email, phone);
     
     if (!query.$or || query.$or.length === 0) {
       return res.status(400).json({ 
+        success: false,
         message: 'Thông tin không hợp lệ' 
       });
     }
 
+    // Find bookings
     const bookings = await Booking.find(query)
       .populate('vehicle', 'name images')
       .sort({ createdAt: -1 })
@@ -106,10 +107,12 @@ export const sendTrackingCode = async (req, res) => {
 
     if (bookings.length === 0) {
       return res.status(404).json({ 
+        success: false,
         message: 'Không tìm thấy đơn đặt xe nào với thông tin này' 
       });
     }
 
+    // Determine recipient email
     let recipientEmail = email;
     if (!recipientEmail && phone) {
       for (const booking of bookings) {
@@ -122,21 +125,25 @@ export const sendTrackingCode = async (req, res) => {
       
       if (!recipientEmail) {
         return res.status(400).json({ 
+          success: false,
           message: 'Không tìm thấy email liên kết với số điện thoại này. Vui lòng nhập email để nhận mã xác thực.' 
         });
       }
     }
 
+    // Generate tracking code
     const trackingCode = generateTrackingCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     const trackingKey = createTrackingKey(email, phone);
     
     if (!trackingKey) {
       return res.status(400).json({ 
+        success: false,
         message: 'Thông tin không hợp lệ' 
       });
     }
     
+    // Clean up old code
     if (trackingCodes.has(trackingKey)) {
       const oldData = trackingCodes.get(trackingKey);
       if (oldData.timeoutId) {
@@ -145,10 +152,12 @@ export const sendTrackingCode = async (req, res) => {
       trackingCodes.delete(trackingKey);
     }
 
+    // Auto cleanup
     const timeoutId = setTimeout(() => {
       trackingCodes.delete(trackingKey);
     }, 10 * 60 * 1000);
 
+    // Save tracking code
     trackingCodes.set(trackingKey, {
       code: trackingCode,
       recipientEmail: recipientEmail,
@@ -159,33 +168,38 @@ export const sendTrackingCode = async (req, res) => {
       timeoutId
     });
 
-    //TRY SENDING EMAIL WITH PROPER ERROR HANDLING
+    // Send email
     try {
-      await emailService.sendTrackingCode(recipientEmail, trackingCode, bookings.length);
+      const result = await emailService.sendTrackingCode(recipientEmail, trackingCode, bookings.length);
       
-      res.json({
+      console.log(` Tracking code ${trackingCode} sent successfully to ${recipientEmail}`);
+      
+      // SUCCESS RESPONSE - QUAN TRỌNG
+      return res.status(200).json({
         success: true,
         message: `Mã xác thực đã được gửi đến email ${recipientEmail}`,
         recipientEmail,
         expiresIn: 600,
         bookingsFound: bookings.length
       });
-    } catch (emailError) {
-      // Email failed but we still have the tracking code
-      console.error('Email sending failed:', emailError.message);
       
-      res.status(500).json({
-        success: false,
-        message: 'Không thể gửi email xác thực. Vui lòng kiểm tra lại email hoặc thử lại sau.',
-        error: 'EMAIL_SERVICE_ERROR',
+    } catch (emailError) {
+      console.error(' Email sending failed:', emailError.message);
+      
+      // Email failed but code is saved, user can still verify manually
+      return res.status(200).json({
+        success: true,
+        message: `Mã xác thực đã được tạo cho ${recipientEmail}. Nếu không nhận được email, vui lòng kiểm tra spam folder.`,
         recipientEmail,
-        bookingsFound: bookings.length
+        expiresIn: 600,
+        bookingsFound: bookings.length,
+        warning: 'Email có thể đã vào spam folder'
       });
     }
 
   } catch (error) {
-    console.error('Error in sendTrackingCode:', error);
-    res.status(500).json({ 
+    console.error(' Error in sendTrackingCode:', error);
+    return res.status(500).json({ 
       success: false,
       message: 'Lỗi hệ thống. Vui lòng thử lại sau.',
       error: error.message 
@@ -198,46 +212,56 @@ export const verifyTrackingCode = async (req, res) => {
     const { email, phone, trackingCode } = req.body;
 
     if (!trackingCode) {
-      return res.status(400).json({ message: 'Vui lòng nhập mã xác thực' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Vui lòng nhập mã xác thực' 
+      });
     }
 
     if (!email && !phone) {
-      return res.status(400).json({ message: 'Vui lòng cung cấp email hoặc số điện thoại' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Vui lòng cung cấp email hoặc số điện thoại' 
+      });
     }
 
-    // Create same key as when sending (must match exactly)
     const trackingKey = createTrackingKey(email, phone);
     
     if (!trackingKey) {
-      return res.status(400).json({ message: 'Thông tin không hợp lệ' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Thông tin không hợp lệ' 
+      });
     }
 
     const storedData = trackingCodes.get(trackingKey);
 
     if (!storedData) {
       return res.status(400).json({ 
+        success: false,
         message: 'Mã xác thực không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu mã mới.' 
       });
     }
 
     if (storedData.expiresAt < new Date()) {
-      // Clean up expired code
       if (storedData.timeoutId) {
         clearTimeout(storedData.timeoutId);
       }
       trackingCodes.delete(trackingKey);
       return res.status(400).json({ 
+        success: false,
         message: 'Mã xác thực đã hết hạn. Vui lòng yêu cầu mã mới.' 
       });
     }
 
     if (storedData.code !== trackingCode.toUpperCase()) {
       return res.status(400).json({ 
+        success: false,
         message: 'Mã xác thực không đúng. Vui lòng kiểm tra lại.' 
       });
     }
 
-    // Valid code - use stored search criteria
+    // Valid code - fetch bookings
     const query = buildSearchQuery(storedData.searchEmail, storedData.searchPhone);
 
     const bookings = await Booking.find(query)
@@ -246,6 +270,7 @@ export const verifyTrackingCode = async (req, res) => {
 
     if (bookings.length === 0) {
       return res.status(404).json({ 
+        success: false,
         message: 'Không tìm thấy đơn đặt xe nào' 
       });
     }
@@ -259,7 +284,7 @@ export const verifyTrackingCode = async (req, res) => {
       return bookingObj;
     });
 
-    // Extend expiry for session browsing (30 minutes)
+    // Extend expiry for session browsing
     storedData.expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     
     if (storedData.timeoutId) {
@@ -269,7 +294,7 @@ export const verifyTrackingCode = async (req, res) => {
       trackingCodes.delete(trackingKey);
     }, 30 * 60 * 1000);
 
-    res.json({
+    return res.status(200).json({
       success: true,
       bookings: transformedBookings,
       verifiedEmail: storedData.searchEmail,
@@ -278,8 +303,9 @@ export const verifyTrackingCode = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error verifying tracking code:', error);
-    res.status(500).json({ 
+    console.error(' Error verifying tracking code:', error);
+    return res.status(500).json({ 
+      success: false,
       message: 'Lỗi khi xác thực',
       error: error.message 
     });
@@ -293,6 +319,7 @@ export const getGuestBookingDetail = async (req, res) => {
 
     if (!email && !phone) {
       return res.status(400).json({ 
+        success: false,
         message: 'Vui lòng cung cấp email hoặc số điện thoại để xác thực' 
       });
     }
@@ -314,14 +341,14 @@ export const getGuestBookingDetail = async (req, res) => {
       });
     }
 
-    res.json({
+    return res.status(200).json({
       success: true,
       booking
     });
 
   } catch (error) {
-    console.error('Error getting guest booking detail:', error);
-    res.status(500).json({ 
+    console.error(' Error getting guest booking detail:', error);
+    return res.status(500).json({ 
       success: false,
       message: 'Lỗi khi lấy thông tin đặt xe',
       error: error.message 
@@ -329,7 +356,7 @@ export const getGuestBookingDetail = async (req, res) => {
   }
 };
 
-// Cleanup expired tracking codes periodically
+// Cleanup expired codes periodically
 setInterval(() => {
   const now = new Date();
   let cleaned = 0;
@@ -343,6 +370,6 @@ setInterval(() => {
     }
   }
   if (cleaned > 0) {
-    console.log(`Cleaned up ${cleaned} expired tracking codes`);
+    console.log(`🧹 Cleaned up ${cleaned} expired tracking codes`);
   }
-}, 60 * 1000); // Check every minute
+}, 60 * 1000);

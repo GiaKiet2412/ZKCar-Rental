@@ -53,9 +53,9 @@ class EmailService {
         to: email,
         from: {
           email: process.env.EMAIL_FROM,
-          name: 'KIETCAR - Thuê Xe Tự Lái'
+          name: 'ZK CAR - Thuê Xe Tự Lái'
         },
-        subject: 'Mã xác thực tra cứu đơn hàng - KIETCAR',
+        subject: 'Mã xác thực tra cứu đơn hàng - ZK CAR',
         html: `
           <!DOCTYPE html>
           <html>
@@ -88,7 +88,7 @@ class EmailService {
             <div class="container">
               <div class="header">
                 <h1>Mã Xác Thực Tra Cứu Đơn Hàng</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.95; font-size: 16px;">KIETCAR - Thuê Xe Điện Tự Lái</p>
+                <p style="margin: 10px 0 0 0; opacity: 0.95; font-size: 16px;">ZK CAR - Thuê Xe Điện Tự Lái</p>
               </div>
               
               <div class="content">
@@ -128,8 +128,8 @@ class EmailService {
               </div>
 
               <div class="footer">
-                <p><strong>KIETCAR - Thuê Xe Điện Tự Lái</strong></p>
-                <p>Hotline: 1900 xxxx | Email: support@kietcar.com</p>
+                <p><strong>ZK CAR - Thuê Xe Điện Tự Lái</strong></p>
+                <p>Hotline: 1900 xxxx | Email: support@zkcar.com</p>
                 <p>Website: ${process.env.CLIENT_URL}</p>
                 <p style="margin-top: 15px; font-size: 11px; color: #9ca3af;">
                   Email này được gửi tự động. Vui lòng không trả lời email này.
@@ -181,7 +181,7 @@ class EmailService {
         to: recipientEmail,
         from: {
           email: process.env.EMAIL_FROM,
-          name: 'KIETCAR - Thuê Xe Tự Lái'
+          name: 'ZK CAR - Thuê Xe Tự Lái'
         },
         subject: `Xác nhận đặt xe thành công - Mã ${bookingCode}`,
         html: `
@@ -213,7 +213,7 @@ class EmailService {
             <div class="container">
               <div class="header">
                 <h1 style="margin: 0; font-size: 28px;">Đặt xe thành công!</h1>
-                <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Cảm ơn bạn đã tin tưởng KIETCAR</p>
+                <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Cảm ơn bạn đã tin tưởng ZK CAR</p>
               </div>
               
               <div class="content">
@@ -292,8 +292,8 @@ class EmailService {
                 </p>
 
                 <div class="footer">
-                  <p><strong>KIETCAR - Thuê Xe Điện Tự Lái</strong></p>
-                  <p>Hotline: 1900 xxxx | Email: support@kietcar.com</p>
+                  <p><strong>ZK CAR - Thuê Xe Điện Tự Lái</strong></p>
+                  <p>Hotline: 1900 xxxx | Email: support@zkcar.com</p>
                   <p>Website: ${process.env.CLIENT_URL}</p>
                   <p style="margin-top: 10px; font-size: 11px; color: #9ca3af;">
                     Email này được gửi tự động. Vui lòng không trả lời email này.
@@ -339,7 +339,7 @@ class EmailService {
         to: recipientEmail,
         from: {
           email: process.env.EMAIL_FROM,
-          name: 'KIETCAR - Thuê Xe Tự Lái'
+          name: 'ZK CAR - Thuê Xe Tự Lái'
         },
         subject: `Đơn đặt xe đã bị hủy - Mã ${bookingCode}`,
         html: `
@@ -388,8 +388,8 @@ class EmailService {
                 </p>
 
                 <div class="footer">
-                  <p><strong>KIETCAR - Thuê Xe Điện Tự Lái</strong></p>
-                  <p>Hotline: 1900 xxxx | Email: support@kietcar.com</p>
+                  <p><strong>ZK CAR - Thuê Xe Điện Tự Lái</strong></p>
+                  <p>Hotline: 1900 xxxx | Email: support@zkcar.com</p>
                 </div>
               </div>
             </div>
