@@ -74,51 +74,36 @@ export const SearchProvider = ({ children }) => {
     return data;
   };
 
-  // Tính toán lại thời gian giữ nguyên khoảng cách
-  const recalculateTimes = (oldData) => {
-    const now = new Date();
-    
-    // Pickup = bây giờ + 2 giờ, làm tròn LÊN giờ tiếp theo
-    let pickup = addHours(now, 2);
-    
-    const minutes = pickup.getMinutes();
-    if (minutes > 0) {
-      pickup = addHours(pickup, 1);
-      pickup = setMinutes(pickup, 0);
-      pickup.setSeconds(0);
-      pickup.setMilliseconds(0);
-    }
-
-    // Giữ CHÍNH XÁC duration cũ
-    const durationHours = oldData.totalHours || 52;
-    const ret = addHours(pickup, durationHours);
-    
-    const totalDays = Math.floor(durationHours / 24);
-    const remainHours = durationHours % 24;
-
-    return {
-      pickupDate: pickup.toISOString().split("T")[0],
-      pickupTime: pickup.getHours().toString().padStart(2, "0") + ":00",
-      returnDate: ret.toISOString().split("T")[0],
-      returnTime: ret.getHours().toString().padStart(2, "0") + ":00",
-      pickupFull: `${pickup.toISOString().split("T")[0]} ${pickup.getHours().toString().padStart(2, "0")}:00`,
-      returnFull: `${ret.toISOString().split("T")[0]} ${ret.getHours().toString().padStart(2, "0")}:00`,
-      totalHours: durationHours,
-      totalDays,
-      remainHours
-    };
-  };
-
+  // ============ CRITICAL FIX: LUÔN KHỞI TẠO SEARCHDATA ============
   const [searchData, setSearchData] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return null;
     
+    // Nếu KHÔNG có localStorage -> TẠO MỚI ngay lập tức
+    if (!saved) {
+      const newData = createDefaultSearchData();
+      // Lưu vào localStorage ngay
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+      console.log("SearchData mới");
+      return newData;
+    }
+    
+    // Nếu CÓ localStorage -> validate và refresh nếu cần
     try {
       const parsed = JSON.parse(saved);
-      return validateAndRefreshSearchData(parsed);
+      const validated = validateAndRefreshSearchData(parsed);
+      
+      // Nếu data đã được refresh, lưu lại
+      if (JSON.stringify(validated) !== JSON.stringify(parsed)) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(validated));
+        console.log("refresh searchData");
+      }
+      
+      return validated;
     } catch (error) {
-      console.error("Lỗi parse searchData:", error);
-      return null;
+      // Nếu parse lỗi -> tạo mới
+      const newData = createDefaultSearchData();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+      return newData;
     }
   });
 
@@ -135,8 +120,13 @@ export const SearchProvider = ({ children }) => {
         timestamp: new Date().toISOString()
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+      console.log("Lưu searchData");
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      // Nếu searchData bị xóa -> tạo lại ngay
+      const newData = createDefaultSearchData();
+      setSearchData(newData);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+      console.log("SearchData null -> tạo");
     }
   }, [searchData]);
 
@@ -144,7 +134,14 @@ export const SearchProvider = ({ children }) => {
   useEffect(() => {
     const interval = setInterval(() => {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return;
+      
+      // Nếu không có localStorage -> tạo mới
+      if (!saved) {
+        console.log("SearchData bị xóa, tạo mới");
+        const newData = createDefaultSearchData();
+        setSearchData(newData);
+        return;
+      }
 
       try {
         const parsed = JSON.parse(saved);
@@ -152,10 +149,14 @@ export const SearchProvider = ({ children }) => {
         
         // Chỉ update nếu có thay đổi
         if (JSON.stringify(validated) !== JSON.stringify(parsed)) {
+          console.log("Auto-refresh");
           setSearchData(validated);
         }
       } catch (error) {
         console.error("Lỗi validate searchData:", error);
+        // Parse lỗi -> tạo mới
+        const newData = createDefaultSearchData();
+        setSearchData(newData);
       }
     }, CHECK_INTERVAL);
 
@@ -167,14 +168,24 @@ export const SearchProvider = ({ children }) => {
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            const validated = validateAndRefreshSearchData(parsed);
+        
+        // Nếu không có localStorage -> tạo mới
+        if (!saved) {
+          const newData = createDefaultSearchData();
+          setSearchData(newData);
+          return;
+        }
+        
+        try {
+          const parsed = JSON.parse(saved);
+          const validated = validateAndRefreshSearchData(parsed);
+          
+          if (JSON.stringify(validated) !== JSON.stringify(parsed)) {
             setSearchData(validated);
-          } catch (error) {
-            console.error("Lỗi refresh searchData:", error);
           }
+        } catch (error) {
+          const newData = createDefaultSearchData();
+          setSearchData(newData);
         }
       }
     };
@@ -191,8 +202,10 @@ export const SearchProvider = ({ children }) => {
   };
 
   const clearSearchData = () => {
-    setSearchData(null);
-    localStorage.removeItem(STORAGE_KEY);
+    // Không cho phép xóa hoàn toàn, chỉ reset về mặc định
+    const newData = createDefaultSearchData();
+    setSearchData(newData);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
   };
 
   // Update searchData với validation
@@ -202,7 +215,6 @@ export const SearchProvider = ({ children }) => {
     const returnTime = new Date(newData.returnFull || `${newData.returnDate}T${newData.returnTime}`);
     
     if (isAfter(pickup, returnTime)) {
-      console.warn("Invalid time range: pickup after return");
       return;
     }
 
