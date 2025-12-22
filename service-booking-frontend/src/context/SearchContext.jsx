@@ -59,14 +59,12 @@ export const SearchProvider = ({ children }) => {
     
     // Kiểm tra thời gian pickup đã qua chưa
     if (isPast(pickupDate)) {
-      console.log("Pickup time đã qua, tạo searchData mới");
       return createDefaultSearchData();
     }
 
     // Kiểm tra idle time
     const idleMinutes = (now - lastUpdate) / (1000 * 60);
     if (idleMinutes > MAX_IDLE_MINUTES) {
-      console.log(`Đã idle ${Math.floor(idleMinutes)} phút, làm mới thời gian VÀ reset về 52h`);
       // Luôn tạo mới với 52h, không giữ duration cũ
       return createDefaultSearchData();
     }
@@ -83,7 +81,6 @@ export const SearchProvider = ({ children }) => {
       const newData = createDefaultSearchData();
       // Lưu vào localStorage ngay
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
-      console.log("SearchData mới");
       return newData;
     }
     
@@ -95,7 +92,6 @@ export const SearchProvider = ({ children }) => {
       // Nếu data đã được refresh, lưu lại
       if (JSON.stringify(validated) !== JSON.stringify(parsed)) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(validated));
-        console.log("refresh searchData");
       }
       
       return validated;
@@ -120,13 +116,11 @@ export const SearchProvider = ({ children }) => {
         timestamp: new Date().toISOString()
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
-      console.log("Lưu searchData");
     } else {
       // Nếu searchData bị xóa -> tạo lại ngay
       const newData = createDefaultSearchData();
       setSearchData(newData);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
-      console.log("SearchData null -> tạo");
     }
   }, [searchData]);
 
@@ -137,7 +131,6 @@ export const SearchProvider = ({ children }) => {
       
       // Nếu không có localStorage -> tạo mới
       if (!saved) {
-        console.log("SearchData bị xóa, tạo mới");
         const newData = createDefaultSearchData();
         setSearchData(newData);
         return;
@@ -149,11 +142,9 @@ export const SearchProvider = ({ children }) => {
         
         // Chỉ update nếu có thay đổi
         if (JSON.stringify(validated) !== JSON.stringify(parsed)) {
-          console.log("Auto-refresh");
           setSearchData(validated);
         }
       } catch (error) {
-        console.error("Lỗi validate searchData:", error);
         // Parse lỗi -> tạo mới
         const newData = createDefaultSearchData();
         setSearchData(newData);

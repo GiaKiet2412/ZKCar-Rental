@@ -14,8 +14,17 @@ export const getAllUsers = async (req, res) => {
         const bookings = await Booking.find({ user: user._id });
         const completedBookings = bookings.filter(b => b.status === 'completed');
         
-        const totalSpent = completedBookings.reduce((sum, b) => {
-          return sum + (b.finalAmount || 0);
+        // Tính totalSpent: bao gồm booking đã thanh toán (confirmed, ongoing, completed)
+        const paidBookings = bookings.filter(b => 
+          b.status === 'confirmed' || 
+          b.status === 'ongoing' || 
+          b.status === 'completed'
+        );
+        
+        const totalSpent = paidBookings.reduce((sum, booking) => {
+          // Ưu tiên paidAmount, fallback sang finalAmount
+          const amountPaid = booking.paidAmount || booking.finalAmount || booking.totalPrice || 0;
+          return sum + amountPaid;
         }, 0);
 
         return {
@@ -23,6 +32,7 @@ export const getAllUsers = async (req, res) => {
           bookingStats: {
             totalBookings: bookings.length,
             completedBookings: completedBookings.length,
+            activeBookings: bookings.filter(b => b.status === 'confirmed' || b.status === 'ongoing').length,
             totalSpent: totalSpent
           }
         };
@@ -49,8 +59,16 @@ export const getUserById = async (req, res) => {
     const bookings = await Booking.find({ user: user._id });
     const completedBookings = bookings.filter(b => b.status === 'completed');
     
-    const totalSpent = completedBookings.reduce((sum, booking) => {
-      return sum + (booking.finalAmount || 0);
+    // Tính totalSpent từ các booking đã thanh toán
+    const paidBookings = bookings.filter(b => 
+      b.status === 'confirmed' || 
+      b.status === 'ongoing' || 
+      b.status === 'completed'
+    );
+    
+    const totalSpent = paidBookings.reduce((sum, booking) => {
+      const amountPaid = booking.paidAmount || booking.finalAmount || booking.totalPrice || 0;
+      return sum + amountPaid;
     }, 0);
 
     res.json({
@@ -58,8 +76,9 @@ export const getUserById = async (req, res) => {
       bookingStats: {
         totalBookings: bookings.length,
         completedBookings: completedBookings.length,
-        activeBookings: bookings.filter(b => b.status === 'confirmed').length,
+        activeBookings: bookings.filter(b => b.status === 'confirmed' || b.status === 'ongoing').length,
         cancelledBookings: bookings.filter(b => b.status === 'cancelled').length,
+        pendingBookings: bookings.filter(b => b.status === 'pending').length,
         totalSpent: totalSpent
       }
     });
@@ -222,7 +241,7 @@ export const searchUsers = async (req, res) => {
 export const getUserBookingHistory = async (req, res) => {
   try {
     const bookings = await Booking.find({ user: req.params.id })
-      .populate('vehicle', 'name brand model images pricePerDay location')
+      .populate('vehicle', 'name brand model images pricePerDay location locationPickUp')
       .sort({ createdAt: -1 });
 
     res.json(bookings);

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, Phone, Key, Search, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { getImageUrl } from '../../utils/imageUtils';
 import API from '../../api/axios';
+import Header from "../../components/user/Header";
 
 const GuestTrackingPage = () => {
   const [step, setStep] = useState(1);
@@ -187,8 +188,9 @@ const GuestTrackingPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen bg-gray-50">
+      <Header />
+      <div className="max-w-2xl mx-auto py-12">
         
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">

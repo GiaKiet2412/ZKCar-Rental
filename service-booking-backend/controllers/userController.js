@@ -9,13 +9,34 @@ export const getUserProfile = async (req, res) => {
       return res.status(404).json({ message: 'Người dùng không tồn tại' });
     }
 
-    // Calculate statistics
+    // Lấy tất cả bookings
     const bookings = await Booking.find({ user: user._id });
+    
+    // Đếm completed bookings (cho totalRentals)
     const completedBookings = bookings.filter(b => b.status === 'completed');
     
-    const totalSpent = completedBookings.reduce((sum, booking) => {
-      return sum + (booking.totalPrice || 0);
+    // Tính totalSpent: bao gồm booking đã thanh toán (confirmed, ongoing, completed)
+    // KHÔNG tính pending và cancelled
+    const paidBookings = bookings.filter(b => 
+      b.status === 'confirmed' || 
+      b.status === 'ongoing' || 
+      b.status === 'completed'
+    );
+    
+    const totalSpent = paidBookings.reduce((sum, booking) => {
+      // Ưu tiên paidAmount (số tiền thực tế đã trả)
+      // Fallback sang finalAmount nếu không có paidAmount
+      const amountPaid = booking.paidAmount || booking.finalAmount || booking.totalPrice || 0;
+      return sum + amountPaid;
     }, 0);
+
+    console.log('User profile stats:', {
+      userId: user._id,
+      totalBookings: bookings.length,
+      completedBookings: completedBookings.length,
+      paidBookings: paidBookings.length,
+      totalSpent: totalSpent
+    });
 
     res.json({
       _id: user._id,
@@ -27,8 +48,8 @@ export const getUserProfile = async (req, res) => {
       role: user.role,
       isVerified: user.isVerified,
       createdAt: user.createdAt,
-      totalRentals: completedBookings.length,
-      totalSpent: totalSpent
+      totalRentals: completedBookings.length, // Chỉ đếm completed
+      totalSpent: totalSpent // Tính cả confirmed, ongoing, completed
     });
   } catch (error) {
     console.error('Error getting user profile:', error);
@@ -70,7 +91,7 @@ export const updateUserProfile = async (req, res) => {
 export const getUserBookings = async (req, res) => {
   try {
     const bookings = await Booking.find({ user: req.user._id })
-      .populate('vehicle', 'name images pricePerDay')
+      .populate('vehicle', 'name images pricePerDay location locationPickUp')
       .sort({ createdAt: -1 });
 
     res.json(bookings);
@@ -84,14 +105,25 @@ export const getUserStats = async (req, res) => {
   try {
     const bookings = await Booking.find({ user: req.user._id });
     
+    // Tính tổng chi tiêu từ các booking đã thanh toán
+    const paidBookings = bookings.filter(b => 
+      b.status === 'confirmed' || 
+      b.status === 'ongoing' || 
+      b.status === 'completed'
+    );
+    
+    const totalSpent = paidBookings.reduce((sum, booking) => {
+      const amountPaid = booking.paidAmount || booking.finalAmount || booking.totalPrice || 0;
+      return sum + amountPaid;
+    }, 0);
+    
     const stats = {
       totalBookings: bookings.length,
       completedBookings: bookings.filter(b => b.status === 'completed').length,
-      activeBookings: bookings.filter(b => b.status === 'confirmed').length,
+      activeBookings: bookings.filter(b => b.status === 'confirmed' || b.status === 'ongoing').length,
       cancelledBookings: bookings.filter(b => b.status === 'cancelled').length,
-      totalSpent: bookings
-        .filter(b => b.status === 'completed')
-        .reduce((sum, b) => sum + (b.totalPrice || 0), 0)
+      pendingBookings: bookings.filter(b => b.status === 'pending').length,
+      totalSpent: totalSpent
     };
 
     res.json(stats);
