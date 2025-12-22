@@ -51,44 +51,88 @@ export const calculatePriceForHours = (pricePerHour, hours) => {
 };
 
 /**
- * Format giá hiển thị trên card xe
- * Hiển thị 2 mức giá đại diện (thường là 8h và 24h)
+ * Làm tròn lên các mốc giờ chuẩn (4h, 8h, 12h, 24h)
+ */
+export const roundUpToStandardHours = (hours) => {
+  if (hours <= 4) return 4;
+  if (hours <= 8) return 8;
+  if (hours <= 12) return 12;
+  if (hours <= 24) return 24;
+  // Nếu > 24h thì không làm tròn, giữ nguyên
+  return hours;
+};
+
+/**
+ * Format giá hiển thị trên card xe (LOGIC MỚI)
+ * - Nếu có searchData (totalHours):
+ *   + <= 4h: hiển thị giá 4h
+ *   + 5-8h: hiển thị giá 8h
+ *   + 9-12h: hiển thị giá 12h
+ *   + 13-24h: hiển thị giá 24h
+ *   + > 24h: hiển thị giá theo đúng duration của searchData
+ * - Nếu không có searchData: hiển thị 8h và 24h (mặc định)
  */
 export const getCardDisplayPrices = (pricePerHour, totalHours = null) => {
-  const { price8h, price24h } = getFixedPackagePrices(pricePerHour);
+  const { price4h, price8h, price12h, price24h } = getFixedPackagePrices(pricePerHour);
   
-  // Nếu có totalHours từ search, hiển thị giá cho duration đó
-  if (totalHours && totalHours > 0) {
-    const currentPrice = calculatePriceForHours(pricePerHour, totalHours);
-    
-    // Nếu duration <= 8h, hiển thị giá 8h
-    if (totalHours <= 8) {
-      return {
-        primary: { price: price8h, label: '8h' },
-        secondary: { price: price24h, label: '24h' }
-      };
-    }
-    
-    // Nếu duration <= 12h, hiển thị giá hiện tại và 24h
-    if (totalHours <= 12) {
-      return {
-        primary: { price: currentPrice, label: `${totalHours}h` },
-        secondary: { price: price24h, label: '24h' }
-      };
-    }
-    
-    // Nếu duration > 12h, hiển thị giá hiện tại và per day
-    const days = Math.ceil(totalHours / 24);
+  // Nếu KHÔNG có totalHours -> hiển thị mặc định 8h và 24h
+  if (!totalHours || totalHours <= 0) {
     return {
-      primary: { price: currentPrice, label: `${days} ngày` },
+      primary: { price: price8h, label: '8h' },
       secondary: { price: price24h, label: '24h' }
     };
   }
   
-  // Default: hiển thị 8h và 24h
+  // Nếu CÓ totalHours từ searchData
+  // Làm tròn lên mốc giờ chuẩn nếu <= 24h
+  if (totalHours <= 24) {
+    const roundedHours = roundUpToStandardHours(totalHours);
+    let displayPrice;
+    let displayLabel;
+    
+    switch (roundedHours) {
+      case 4:
+        displayPrice = price4h;
+        displayLabel = '4h';
+        break;
+      case 8:
+        displayPrice = price8h;
+        displayLabel = '8h';
+        break;
+      case 12:
+        displayPrice = price12h;
+        displayLabel = '12h';
+        break;
+      case 24:
+        displayPrice = price24h;
+        displayLabel = '24h';
+        break;
+      default:
+        displayPrice = price24h;
+        displayLabel = '24h';
+    }
+    
+    return {
+      primary: { price: displayPrice, label: displayLabel },
+      secondary: null // Không hiển thị giá phụ
+    };
+  }
+  
+  // Nếu > 24h: hiển thị giá theo đúng duration của searchData
+  const actualPrice = calculatePriceForHours(pricePerHour, totalHours);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  
+  let label = '';
+  if (hours === 0) {
+    label = `${days} ngày`;
+  } else {
+    label = `${days} ngày ${hours}h`;
+  }
+  
   return {
-    primary: { price: price8h, label: '8h' },
-    secondary: { price: price24h, label: '24h' }
+    primary: { price: actualPrice, label: label },
+    secondary: null // Không hiển thị giá phụ
   };
 };
 
@@ -141,5 +185,6 @@ export default {
   getCardDisplayPrices,
   calculateDaysAndHours,
   formatDurationLabel,
-  getBestPriceSuggestion
+  getBestPriceSuggestion,
+  roundUpToStandardHours
 };

@@ -29,13 +29,11 @@ const UserVehicleList = () => {
     navigate(`/vehicle/${id}`);
   };
 
-  // Format tiền
   const formatCurrency = (price) => {
     if (!price) return "";
     return price.toLocaleString("vi-VN") + " VNĐ";
   };
 
-  // Viết hoa chữ cái đầu
   const capitalizeWords = (text) => {
     if (!text) return "";
     return text
@@ -67,7 +65,7 @@ const UserVehicleList = () => {
         ) : vehicles.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {vehicles.map((v) => {
-              // Lấy giá hiển thị (mặc định: 8h và 24h)
+              // Không có searchData -> hiển thị mặc định 8h và 24h
               const { primary, secondary } = getCardDisplayPrices(v.pricePerHour);
               
               return (

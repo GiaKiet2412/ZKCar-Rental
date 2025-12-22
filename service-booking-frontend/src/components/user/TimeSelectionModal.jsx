@@ -2,11 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { format, addHours, addDays, setHours, setMinutes, isSameDay, isBefore, startOfDay, isWithinInterval } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { Calendar, Clock, X } from 'lucide-react';
+import { useSearch } from '../../context/SearchContext';
 import API from '../../api/axios';
 
 const TimeSelectionModal = ({ 
-  initialPickup, 
-  initialReturn, 
   vehicleId,
   onConfirm, 
   onClose
@@ -14,11 +13,49 @@ const TimeSelectionModal = ({
   const modalRef = useRef();
   const now = new Date();
   
-  const [pickup, setPickup] = useState(initialPickup);
-  const [returnTime, setReturnTime] = useState(initialReturn);
+  // Lấy searchData từ context thay vì props
+  const { searchData } = useSearch();
+  
+  // Parse thời gian từ searchData
+  const getInitialTimes = () => {
+    if (searchData?.pickupFull && searchData?.returnFull) {
+      return {
+        pickup: new Date(searchData.pickupFull),
+        return: new Date(searchData.returnFull)
+      };
+    }
+    
+    // Fallback nếu không có searchData
+    const defaultPickup = addHours(now, 2);
+    const roundedPickup = setMinutes(setHours(defaultPickup, defaultPickup.getHours() + (defaultPickup.getMinutes() > 0 ? 1 : 0)), 0);
+    return {
+      pickup: roundedPickup,
+      return: addHours(roundedPickup, 52)
+    };
+  };
+  
+  const initialTimes = getInitialTimes();
+  const [pickup, setPickup] = useState(initialTimes.pickup);
+  const [returnTime, setReturnTime] = useState(initialTimes.return);
   const [activeTab, setActiveTab] = useState('pickup');
   const [bookedSlots, setBookedSlots] = useState([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  
+  // Đồng bộ lại khi searchData thay đổi
+  useEffect(() => {
+    if (searchData?.pickupFull && searchData?.returnFull) {
+      const newPickup = new Date(searchData.pickupFull);
+      const newReturn = new Date(searchData.returnFull);
+      
+      // Chỉ cập nhật nếu thời gian thực sự khác
+      if (newPickup.getTime() !== pickup.getTime()) {
+        setPickup(newPickup);
+      }
+      if (newReturn.getTime() !== returnTime.getTime()) {
+        setReturnTime(newReturn);
+      }
+    }
+  }, [searchData]);
   
   const totalHours = Math.max(Math.round((returnTime - pickup) / (1000 * 60 * 60)), 0);
   const totalDays = Math.floor(totalHours / 24);
@@ -75,23 +112,18 @@ const TimeSelectionModal = ({
   };
 
   const isHourBooked = (date, hour) => {
-    // CRITICAL: Reset milliseconds và seconds về 0
     let checkTime = setHours(setMinutes(date, 0), hour);
     checkTime = new Date(checkTime.getFullYear(), checkTime.getMonth(), checkTime.getDate(), hour, 0, 0, 0);
     const checkTimeMs = checkTime.getTime();
     
     const isBlocked = bookedSlots.some(slot => {
-      // Buffer 1 giờ trước pickup và sau return
       const bufferStart = new Date(slot.start.getTime() - 60 * 60 * 1000);
       const bufferEnd = new Date(slot.end.getTime() + 60 * 60 * 1000);
       
       const bufferStartMs = bufferStart.getTime();
       const bufferEndMs = bufferEnd.getTime();
       
-      // Sử dụng <= và >= để BAO GỒM cả điểm cuối
-      // Giờ bị block nếu: bufferStart <= checkTime <= bufferEnd
       const result = checkTimeMs >= bufferStartMs && checkTimeMs <= bufferEndMs;
-      
       return result;
     });
     return isBlocked;
@@ -103,7 +135,7 @@ const TimeSelectionModal = ({
         return h;
       }
     }
-    return minHour; // Fallback
+    return minHour;
   };
 
   useEffect(() => {
@@ -178,7 +210,6 @@ const TimeSelectionModal = ({
       minHour = pickup.getHours() + 4;
     }
     
-    // Kiểm tra giờ hiện tại có hợp lệ không
     if (currentHour < minHour || isHourBooked(day, currentHour)) {
       newHour = findFirstAvailableHour(day, minHour);
     }
@@ -189,7 +220,6 @@ const TimeSelectionModal = ({
 
   const renderDatePicker = () => {
     const targetDate = activeTab === 'pickup' ? pickup : returnTime;
-    
     const days = Array.from({ length: 30 }, (_, i) => addDays(now, i));
     
     return (

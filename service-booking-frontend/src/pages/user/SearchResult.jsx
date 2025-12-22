@@ -33,18 +33,15 @@ const SearchResultPage = () => {
       setLoading(true);
       const params = new URLSearchParams();
 
-      // Thêm filters
       if (filters.brand?.length) params.append("brand", filters.brand.join(","));
       if (filters.seats?.length) params.append("seats", filters.seats.join(","));
       if (filters.transmission?.length) params.append("transmission", filters.transmission.join(","));
       if (filters.fuelType?.length) params.append("fuelType", filters.fuelType.join(","));
       if (filters.sort) params.append("sort", filters.sort);
       
-      // Thêm price range
       if (filters.minPrice !== null) params.append("minPrice", filters.minPrice);
       if (filters.maxPrice !== null) params.append("maxPrice", filters.maxPrice);
 
-      // Thêm thời gian để backend tính availability
       if (searchData?.pickupFull) params.append("pickupDate", searchData.pickupFull);
       if (searchData?.returnFull) params.append("returnDate", searchData.returnFull);
 
@@ -76,7 +73,6 @@ const SearchResultPage = () => {
     const { location, locationData } = searchData;
     let list = [...vehicles];
 
-    // Lọc theo địa điểm (sử dụng utility - bao gồm quận lân cận)
     if (location && location.trim() !== "") {
       list = filterVehiclesByLocation(list, locationData, location);
     }
@@ -113,7 +109,6 @@ const SearchResultPage = () => {
     const BUFFER_HOURS = 1;
 
     if (vehicle.availabilityStatus === 'booked' && vehicle.nextAvailableTime) {
-      // Thêm 1 giờ buffer để hiển thị thời gian thực tế có thể nhận xe
       const availableTime = new Date(new Date(vehicle.nextAvailableTime).getTime() + BUFFER_HOURS * 60 * 60 * 1000);
       
       return (
@@ -124,9 +119,7 @@ const SearchResultPage = () => {
     }
 
     if (vehicle.availabilityStatus === 'soon_available' && vehicle.currentBookingEnd) {
-      // Hiển thị giờ trả xe (chưa cộng buffer)
       const returnTime = new Date(vehicle.currentBookingEnd);
-      // Thêm 1 giờ để hiển thị thời gian thực tế có thể nhận xe
       const availableTime = new Date(returnTime.getTime() + BUFFER_HOURS * 60 * 60 * 1000);
       
       return (
@@ -176,62 +169,62 @@ const SearchResultPage = () => {
           </div>
         ) : filtered.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((v) => (
-              <div
-                key={v._id}
-                onClick={() => handleViewDetail(v._id)}
-                className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition cursor-pointer"
-              >
-                <div className="relative">
-                  <img
-                    src={getImageUrl(v.images?.[0])}
-                    onError={(e) => { e.target.src = '/no-image.png'; }}
-                    alt={v.name}
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="absolute top-2 right-2">
-                    {getAvailabilityBadge(v)}
+            {filtered.map((v) => {
+              // Lấy giá theo totalHours từ searchData (đã làm tròn lên)
+              const totalHours = searchData?.totalHours || 0;
+              const { primary, secondary } = getCardDisplayPrices(v.pricePerHour, totalHours);
+              
+              return (
+                <div
+                  key={v._id}
+                  onClick={() => handleViewDetail(v._id)}
+                  className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition cursor-pointer"
+                >
+                  <div className="relative">
+                    <img
+                      src={getImageUrl(v.images?.[0])}
+                      onError={(e) => { e.target.src = '/no-image.png'; }}
+                      alt={v.name}
+                      className="w-full h-48 object-cover"
+                    />
+                    <div className="absolute top-2 right-2">
+                      {getAvailabilityBadge(v)}
+                    </div>
                   </div>
-                </div>
-                <div className="p-4 space-y-2">
-                  <h2 className="font-bold text-lg text-gray-800">{v.name}</h2>
-                  <p className="text-gray-600 text-sm">{v.location}</p>
-                  
-                  {getAvailabilityInfo(v)}
-                  
-                  <p className="text-green-600 font-semibold">
-                    {(() => {
-                      const totalHours = searchData?.totalHours || 0;
-                      const { primary, secondary } = getCardDisplayPrices(v.pricePerHour, totalHours);
-                      
-                      return (
+                  <div className="p-4 space-y-2">
+                    <h2 className="font-bold text-lg text-gray-800">{v.name}</h2>
+                    <p className="text-gray-600 text-sm">{v.location}</p>
+                    
+                    {getAvailabilityInfo(v)}
+                    
+                    {/* Hiển thị giá theo logic mới */}
+                    <p className="text-green-600 font-semibold">
+                      {formatCurrency(primary.price)}/{primary.label}
+                      {secondary && (
                         <>
-                          {formatCurrency(primary.price)}/{primary.label}
-                          {secondary && (
-                            <>
-                              {' '}•{' '}
-                              {formatCurrency(secondary.price)}/{secondary.label}
-                            </>
-                          )}
+                          {' '}•{' '}
+                          {formatCurrency(secondary.price)}/{secondary.label}
                         </>
-                      );
-                    })()}
-                  </p>
-                  
-                  {searchData?.totalHours > 0 && (
-                    <p className="text-gray-500 text-sm">
-                      {searchData.totalDays > 0 && `${searchData.totalDays} ngày `}
-                      {searchData.remainHours > 0 && `${searchData.remainHours} giờ`}
+                      )}
                     </p>
-                  )}
-                  <div className="flex justify-between text-sm text-gray-500 pt-2 border-t">
-                    <span>{v.seats} chỗ</span>
-                    <span>{capitalize(v.transmission)}</span>
-                    <span>{capitalize(v.fuelType)}</span>
+                    
+                    {/* Hiển thị thời gian thuê từ searchData */}
+                    {searchData?.totalHours > 0 && (
+                      <p className="text-gray-500 text-sm">
+                        Thời gian: {searchData.totalDays > 0 && `${searchData.totalDays} ngày `}
+                        {searchData.remainHours > 0 && `${searchData.remainHours} giờ`}
+                      </p>
+                    )}
+                    
+                    <div className="flex justify-between text-sm text-gray-500 pt-2 border-t">
+                      <span>{v.seats} chỗ</span>
+                      <span>{capitalize(v.transmission)}</span>
+                      <span>{capitalize(v.fuelType)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="text-center text-gray-500 mt-10">
