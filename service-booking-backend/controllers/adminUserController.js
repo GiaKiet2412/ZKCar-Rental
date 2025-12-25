@@ -67,6 +67,14 @@ export const getUserById = async (req, res) => {
     const completedBookings = bookings.filter(b => b.status === 'completed');
     const totalSpent = calculateTotalSpent(bookings);
 
+    console.log('📊 Admin View User Stats:', {
+      userId: user._id,
+      userName: user.name,
+      totalBookings: bookings.length,
+      completedBookings: completedBookings.length,
+      totalSpent: totalSpent
+    });
+
     res.json({
       ...user.toObject(),
       bookingStats: {

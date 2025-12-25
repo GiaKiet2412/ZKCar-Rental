@@ -36,6 +36,17 @@ export const getUserProfile = async (req, res) => {
     const completedBookings = bookings.filter(b => b.status === 'completed');
     const totalSpent = calculateTotalSpent(bookings);
 
+    console.log('📊 User Profile Stats:', {
+      userId: user._id,
+      totalBookings: bookings.length,
+      completedBookings: completedBookings.length,
+      paidBookings: bookings.filter(b => 
+        b.paymentStatus === 'paid' || 
+        ['confirmed', 'ongoing', 'completed'].includes(b.status)
+      ).length,
+      totalSpent: totalSpent
+    });
+
     res.json({
       _id: user._id,
       name: user.name,
