@@ -1,6 +1,27 @@
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
 
+/**
+ * UNIFIED SPENDING CALCULATION (ĐỒNG BỘ VỚI userController)
+ * CHỈ tính finalAmount từ các booking đã thanh toán
+ * KHÔNG tính depositAmount (tiền thế chấp)
+ */
+const calculateTotalSpent = (bookings) => {
+  if (!bookings || bookings.length === 0) return 0;
+  
+  const paidBookings = bookings.filter(booking => 
+    booking.paymentStatus === 'paid' || 
+    booking.status === 'confirmed' || 
+    booking.status === 'ongoing' || 
+    booking.status === 'completed'
+  );
+  
+  return paidBookings.reduce((sum, booking) => {
+    const actualPaid = booking.paidAmount || booking.finalAmount || 0;
+    return sum + actualPaid;
+  }, 0);
+};
+
 // Lấy danh sách tất cả users với thống kê
 export const getAllUsers = async (req, res) => {
   try {
@@ -8,24 +29,11 @@ export const getAllUsers = async (req, res) => {
       .select('-password')
       .sort({ createdAt: -1 });
 
-    // Lấy thống kê booking cho từng user
     const usersWithStats = await Promise.all(
       users.map(async (user) => {
         const bookings = await Booking.find({ user: user._id });
         const completedBookings = bookings.filter(b => b.status === 'completed');
-        
-        // Tính totalSpent: bao gồm booking đã thanh toán (confirmed, ongoing, completed)
-        const paidBookings = bookings.filter(b => 
-          b.status === 'confirmed' || 
-          b.status === 'ongoing' || 
-          b.status === 'completed'
-        );
-        
-        const totalSpent = paidBookings.reduce((sum, booking) => {
-          // Ưu tiên paidAmount, fallback sang finalAmount
-          const amountPaid = booking.paidAmount || booking.finalAmount || booking.totalPrice || 0;
-          return sum + amountPaid;
-        }, 0);
+        const totalSpent = calculateTotalSpent(bookings);
 
         return {
           ...user.toObject(),
@@ -55,21 +63,9 @@ export const getUserById = async (req, res) => {
       return res.status(404).json({ message: 'Người dùng không tồn tại' });
     }
 
-    // Lấy thống kê booking
     const bookings = await Booking.find({ user: user._id });
     const completedBookings = bookings.filter(b => b.status === 'completed');
-    
-    // Tính totalSpent từ các booking đã thanh toán
-    const paidBookings = bookings.filter(b => 
-      b.status === 'confirmed' || 
-      b.status === 'ongoing' || 
-      b.status === 'completed'
-    );
-    
-    const totalSpent = paidBookings.reduce((sum, booking) => {
-      const amountPaid = booking.paidAmount || booking.finalAmount || booking.totalPrice || 0;
-      return sum + amountPaid;
-    }, 0);
+    const totalSpent = calculateTotalSpent(bookings);
 
     res.json({
       ...user.toObject(),
@@ -99,7 +95,6 @@ export const updateUser = async (req, res) => {
       return res.status(404).json({ message: 'Người dùng không tồn tại' });
     }
 
-    // Check nếu email mới đã tồn tại cho user khác
     if (email && email !== user.email) {
       const existingUser = await User.findOne({ email });
       if (existingUser) {
@@ -107,7 +102,6 @@ export const updateUser = async (req, res) => {
       }
     }
 
-    // Update fields
     if (name) user.name = name;
     if (email) user.email = email;
     if (phone !== undefined) user.phone = phone;
@@ -146,7 +140,6 @@ export const deleteUser = async (req, res) => {
       return res.status(404).json({ message: 'Người dùng không tồn tại' });
     }
 
-    // Kiểm tra xem user có booking đang active không
     const activeBookings = await Booking.find({
       user: user._id,
       status: { $in: ['pending', 'confirmed', 'ongoing'] }
@@ -159,12 +152,9 @@ export const deleteUser = async (req, res) => {
       });
     }
 
-    // Soft delete: chỉ đánh dấu isActive = false thay vì xóa hẳn
+    // Soft delete
     user.isActive = false;
     await user.save();
-
-    // Nếu muốn xóa hẳn, uncomment dòng dưới và comment dòng trên
-    // await User.findByIdAndDelete(req.params.id);
 
     res.json({ message: 'Xóa người dùng thành công' });
   } catch (error) {
@@ -207,7 +197,6 @@ export const searchUsers = async (req, res) => {
     
     let query = {};
     
-    // Search filter
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -216,12 +205,10 @@ export const searchUsers = async (req, res) => {
       ];
     }
     
-    // Role filter
     if (role && role !== 'all') {
       query.role = role;
     }
     
-    // Status filter
     if (status && status !== 'all') {
       query.isActive = status === 'active';
     }

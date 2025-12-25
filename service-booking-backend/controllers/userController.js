@@ -1,6 +1,29 @@
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
 
+/**
+ * UNIFIED SPENDING CALCULATION
+ * CHỈ tính finalAmount từ các booking đã thanh toán
+ * KHÔNG tính depositAmount (tiền thế chấp)
+ */
+const calculateTotalSpent = (bookings) => {
+  if (!bookings || bookings.length === 0) return 0;
+  
+  const paidBookings = bookings.filter(booking => 
+    booking.paymentStatus === 'paid' || 
+    booking.status === 'confirmed' || 
+    booking.status === 'ongoing' || 
+    booking.status === 'completed'
+  );
+  
+  return paidBookings.reduce((sum, booking) => {
+    // Ưu tiên paidAmount, fallback finalAmount
+    // finalAmount = phí thuê xe (KHÔNG bao gồm deposit)
+    const actualPaid = booking.paidAmount || booking.finalAmount || 0;
+    return sum + actualPaid;
+  }, 0);
+};
+
 export const getUserProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('-password');
@@ -9,34 +32,9 @@ export const getUserProfile = async (req, res) => {
       return res.status(404).json({ message: 'Người dùng không tồn tại' });
     }
 
-    // Lấy tất cả bookings
     const bookings = await Booking.find({ user: user._id });
-    
-    // Đếm completed bookings (cho totalRentals)
     const completedBookings = bookings.filter(b => b.status === 'completed');
-    
-    // Tính totalSpent: bao gồm booking đã thanh toán (confirmed, ongoing, completed)
-    // KHÔNG tính pending và cancelled
-    const paidBookings = bookings.filter(b => 
-      b.status === 'confirmed' || 
-      b.status === 'ongoing' || 
-      b.status === 'completed'
-    );
-    
-    const totalSpent = paidBookings.reduce((sum, booking) => {
-      // Ưu tiên paidAmount (số tiền thực tế đã trả)
-      // Fallback sang finalAmount nếu không có paidAmount
-      const amountPaid = booking.paidAmount || booking.finalAmount || booking.totalPrice || 0;
-      return sum + amountPaid;
-    }, 0);
-
-    console.log('User profile stats:', {
-      userId: user._id,
-      totalBookings: bookings.length,
-      completedBookings: completedBookings.length,
-      paidBookings: paidBookings.length,
-      totalSpent: totalSpent
-    });
+    const totalSpent = calculateTotalSpent(bookings);
 
     res.json({
       _id: user._id,
@@ -48,8 +46,8 @@ export const getUserProfile = async (req, res) => {
       role: user.role,
       isVerified: user.isVerified,
       createdAt: user.createdAt,
-      totalRentals: completedBookings.length, // Chỉ đếm completed
-      totalSpent: totalSpent // Tính cả confirmed, ongoing, completed
+      totalRentals: completedBookings.length,
+      totalSpent: totalSpent
     });
   } catch (error) {
     console.error('Error getting user profile:', error);
@@ -65,7 +63,6 @@ export const updateUserProfile = async (req, res) => {
       return res.status(404).json({ message: 'Người dùng không tồn tại' });
     }
 
-    // Update allowed fields only
     user.name = req.body.name || user.name;
     user.phone = req.body.phone || user.phone;
     user.address = req.body.address || user.address;
@@ -104,18 +101,7 @@ export const getUserBookings = async (req, res) => {
 export const getUserStats = async (req, res) => {
   try {
     const bookings = await Booking.find({ user: req.user._id });
-    
-    // Tính tổng chi tiêu từ các booking đã thanh toán
-    const paidBookings = bookings.filter(b => 
-      b.status === 'confirmed' || 
-      b.status === 'ongoing' || 
-      b.status === 'completed'
-    );
-    
-    const totalSpent = paidBookings.reduce((sum, booking) => {
-      const amountPaid = booking.paidAmount || booking.finalAmount || booking.totalPrice || 0;
-      return sum + amountPaid;
-    }, 0);
+    const totalSpent = calculateTotalSpent(bookings);
     
     const stats = {
       totalBookings: bookings.length,
