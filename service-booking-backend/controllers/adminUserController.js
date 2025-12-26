@@ -1,24 +1,30 @@
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
 
-/**
- * UNIFIED SPENDING CALCULATION (ĐỒNG BỘ VỚI userController)
- * CHỈ tính finalAmount từ các booking đã thanh toán
- * KHÔNG tính depositAmount (tiền thế chấp)
- */
 const calculateTotalSpent = (bookings) => {
   if (!bookings || bookings.length === 0) return 0;
   
-  const paidBookings = bookings.filter(booking => 
-    booking.paymentStatus === 'paid' || 
-    booking.status === 'confirmed' || 
-    booking.status === 'ongoing' || 
-    booking.status === 'completed'
-  );
-  
-  return paidBookings.reduce((sum, booking) => {
-    const actualPaid = booking.paidAmount || booking.finalAmount || 0;
-    return sum + actualPaid;
+  return bookings.reduce((sum, booking) => {
+    let amountToCount = 0;
+    
+    if (booking.status === 'completed' || booking.status === 'ongoing') {
+      amountToCount = booking.finalAmount || 0;
+    }
+    else if (booking.status === 'confirmed') {
+      if (booking.paidAmount && booking.paidAmount >= (booking.finalAmount || 0)) {
+        amountToCount = booking.finalAmount || 0;
+      } else {
+        amountToCount = booking.paidAmount || 0;
+      }
+    }
+    else if (booking.status === 'pending' || booking.status === 'cancelled') {
+      amountToCount = 0;
+    }
+    else {
+      amountToCount = booking.paidAmount || 0;
+    }
+    
+    return sum + amountToCount;
   }, 0);
 };
 
@@ -66,14 +72,6 @@ export const getUserById = async (req, res) => {
     const bookings = await Booking.find({ user: user._id });
     const completedBookings = bookings.filter(b => b.status === 'completed');
     const totalSpent = calculateTotalSpent(bookings);
-
-    console.log('📊 Admin View User Stats:', {
-      userId: user._id,
-      userName: user.name,
-      totalBookings: bookings.length,
-      completedBookings: completedBookings.length,
-      totalSpent: totalSpent
-    });
 
     res.json({
       ...user.toObject(),
@@ -160,7 +158,6 @@ export const deleteUser = async (req, res) => {
       });
     }
 
-    // Soft delete
     user.isActive = false;
     await user.save();
 
