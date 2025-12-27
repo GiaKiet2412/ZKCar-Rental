@@ -1,5 +1,6 @@
 import sgMail from '@sendgrid/mail';
 import { formatCurrencyVN } from '../utils/formatUtils.js';
+import moment from 'moment-timezone';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -31,13 +32,8 @@ class EmailService {
   // Format ngày giờ
   formatDateTime(date) {
     if (!date) return 'N/A';
-    const d = new Date(date);
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${hours}:${minutes}, ${day}/${month}/${year}`;
+    const vnTime = moment(date).tz('Asia/Ho_Chi_Minh');
+    return vnTime.format('HH:mm, DD/MM/YYYY');
   }
 
   // GỬI MÃ TRACKING CHO GUEST
