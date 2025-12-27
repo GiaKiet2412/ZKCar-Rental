@@ -68,9 +68,22 @@ The project uses a **monorepo structure**, combining frontend and backend for ea
 
 ```
 pending -> confirmed -> ongoing -> completed
+          | 
+          -> cancelled
 ```
 
-* Status is automatically updated based on pickup and return time
+* `pending`: Booking created but payment not completed
+
+* `confirmed`: Payment successfully verified via VNPay IPN
+
+* `ongoing`: Rental period has started
+
+* `completed`: Vehicle returned and booking finished
+
+* `cancelled`: Automatically triggered when payment fails, payment expires, or booking is not paid within the allowed time window
+
+* Status is automatically updated based on payment result and pickup/return time
+
 * Manual admin override is supported
 
 ### Payment Integration (VNPay)
