@@ -101,6 +101,7 @@ export const getVehicles = async (req, res) => {
 
     let vehicles = await Vehicle.find(query).lean();
     console.log('Vehicles found:', vehicles.length);
+    console.log('Collection name:', Vehicle.collection.name);
 
     if (pickupDate && returnDate) {
       const pickup = new Date(pickupDate);
